@@ -1,13 +1,28 @@
 import cbitLogo from "./images/cbitlogo.png";
 import buses from "./images/busss.png";
 import { useState, useEffect } from "react";
-import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
-import LoginModal from "./components/LoginModal";
-import BusBooking from "./pages/BusBooking";
+import { BrowserRouter as Router, Routes, Route, Link, Navigate } from "react-router-dom";
+
+// context and pages
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import LoginPage from "./pages/LoginPage";
+import BookingProcedure from "./pages/BookingProcedure";
+
+// dashboards
+import JuniorDashboard from "./pages/student/JuniorDashboard";
+import SeniorDashboard from "./pages/student/SeniorDashboard";
+import FacultyDashboard from "./pages/faculty/FacultyDashboard";
+import InchargeDashboard from "./pages/incharge/InchargeDashboard";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+
+// student feature pages
+import BookBus from "./pages/student/BookBus";
+import Renewal from "./pages/student/Renewal";
+import Placeholder from "./pages/Placeholder";
 
 export default function App() {
   const [isScrolled, setIsScrolled] = useState(false);
-  const [isLoginOpen, setIsLoginOpen] = useState(false);
+  // authentication context will redirect to dashboard when user logs in
 
   // Removed manual navigation logic
   // Use react-router for navigation
@@ -161,7 +176,8 @@ export default function App() {
 
   return (
     <Router>
-    <div className="bg-gray-50 min-h-screen">
+      <AuthProvider>
+        <div className="bg-gray-50 min-h-screen">
 
       {/* ================= TOP GREEN BAR (STICKY) ================= */}
       <div className={`fixed top-0 w-full z-50 bg-green-700 text-white h-16 flex items-center px-10 transition-shadow duration-300 border-b-4 border-amber-900 ${isScrolled ? "shadow-xl" : "shadow-md"}`}>
@@ -192,18 +208,78 @@ export default function App() {
             />
           </Link>
 
-          {/* Right Side: Login Button */}
-          <button onClick={() => setIsLoginOpen(true)} className="group relative px-10 py-3.5 bg-green-700 text-white font-bold text-base rounded-lg shadow-md hover:shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 hover:bg-green-800 flex items-center space-x-2">
+              {/* Right Side: Login Button */}
+          <Link to="/login" className="group relative px-10 py-3.5 bg-green-700 text-white font-bold text-base rounded-lg shadow-md hover:shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 hover:bg-green-800 flex items-center space-x-2">
             <span>Login</span>
             <i className="fas fa-arrow-right group-hover:translate-x-1 transition-transform duration-300"></i>
             <span className="absolute inset-0 rounded-lg bg-green-600 opacity-0 group-hover:opacity-10 transition-opacity duration-300"></span>
-          </button>
+          </Link>
         </div>
       </header>
 
       <Routes>
         <Route path="/" element={<HomePage />} />
-        <Route path="/procedure" element={<BusBooking onLoginOpen={() => setIsLoginOpen(true)} />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/procedure" element={<BookingProcedure />} />
+
+        {/* student junior routes */}
+        <Route
+          path="/student/junior/*"
+          element={<PrivateRoute roles={["student-junior"]}><JuniorDashboard /></PrivateRoute>}
+        >
+          <Route path="book" element={<BookBus />} />
+          <Route path="change" element={<Placeholder title="Change Bus" />} />
+          <Route path="pass" element={<Placeholder title="View / Download Bus Pass" />} />
+          <Route path="complaint" element={<Placeholder title="Raise Complaint" />} />
+          <Route path="timetable" element={<Placeholder title="Bus Timetable" />} />
+        </Route>
+
+        {/* student senior */}
+        <Route
+          path="/student/senior/*"
+          element={<PrivateRoute roles={["student-senior"]}><SeniorDashboard /></PrivateRoute>}
+        >
+          <Route path="renewal" element={<Renewal />} />
+          <Route path="change" element={<Placeholder title="Change Bus" />} />
+          <Route path="pass" element={<Placeholder title="View / Download Bus Pass" />} />
+          <Route path="complaint" element={<Placeholder title="Raise Complaint" />} />
+          <Route path="timetable" element={<Placeholder title="Bus Timetable" />} />
+        </Route>
+
+        {/* faculty */}
+        <Route
+          path="/faculty/*"
+          element={<PrivateRoute roles={["faculty"]}><FacultyDashboard /></PrivateRoute>}
+        >
+          <Route path="pass" element={<Placeholder title="View Bus Pass" />} />
+          <Route path="complaint" element={<Placeholder title="Raise Complaint" />} />
+          <Route path="timetable" element={<Placeholder title="Bus Timetable" />} />
+        </Route>
+
+        {/* bus incharge */}
+        <Route
+          path="/incharge/*"
+          element={<PrivateRoute roles={["bus-incharge"]}><InchargeDashboard /></PrivateRoute>}
+        >
+          <Route path="assigned" element={<Placeholder title="Assigned Bus Details" />} />
+          <Route path="students" element={<Placeholder title="Student List" />} />
+          <Route path="timetable" element={<Placeholder title="Bus Timetable" />} />
+        </Route>
+
+        {/* admin */}
+        <Route
+          path="/admin/*"
+          element={<PrivateRoute roles={["transport-admin"]}><AdminDashboard /></PrivateRoute>}
+        >
+          <Route path="routes" element={<Placeholder title="Manage Routes" />} />
+          <Route path="year" element={<Placeholder title="Switch Academic Year" />} />
+          <Route path="assign" element={<Placeholder title="Assign Bus Incharges" />} />
+          <Route path="students" element={<Placeholder title="View Students" />} />
+          <Route path="complaints" element={<Placeholder title="Manage Complaints" />} />
+        </Route>
+
+        {/* catch-all */}
+        <Route path="*" element={<Navigate to="/" />} />
       </Routes>
 
       {/* ================= FOOTER ================= */}
@@ -246,9 +322,16 @@ export default function App() {
         </div>
       </footer>
 
-      {/* Login Modal */}
-      <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
-    </div>
+        </div>
+      </AuthProvider>
     </Router>
   );
+}
+
+// helper component for guarding routes
+function PrivateRoute({ children, roles }) {
+  const { user } = useAuth();
+  if (!user) return <Navigate to="/login" />;
+  if (roles && !roles.includes(user.role)) return <Navigate to="/" />;
+  return children;
 }
