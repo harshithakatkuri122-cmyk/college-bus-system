@@ -65,3 +65,287 @@ body {
 .group-hover\:glow:hover {
   animation: buttonGlow 0.5s ease-in-out;
 }
+
+/* ==================== Senior Dashboard Styling Overrides ==================== */
+/* ===============================
+   PAGE BACKGROUND
+================================= */
+
+div.flex.min-h-screen.pt-16 {
+  background: #f5f7fa;
+  padding-top: 80px; /* match header height */
+}
+
+
+/* ===============================
+   SIDEBAR FIXED BELOW HEADER
+================================= */
+
+aside[style*="calc(100% - 4rem)"] {
+  position: fixed;
+  top: 40px; /* push below header/logo */
+  left: 0;
+  width: 250px;
+  height: calc(100vh - 80px);
+  background: #1f2937;
+  color: white;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+  overflow-y: auto;
+}
+
+
+/* ===============================
+   SIDEBAR TITLE + BUS LOGO
+================================= */
+
+aside[style*="calc(100% - 4rem)"] .mb-6 {
+  margin-bottom: 20px;
+}
+
+aside[style*="calc(100% - 4rem)"] .mb-6 h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #ecfdf5;
+}
+
+/* Bus logo before title */
+aside[style*="calc(100% - 4rem)"] .mb-6 h3:before {
+  content: "";
+  width: 28px;
+  height: 28px;
+  display: inline-block;
+  background-image: url('/src/images/buslogo.jpg');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  border-radius: 4px;
+}
+
+
+/* ===============================
+   SIDEBAR MENU ITEMS
+================================= */
+
+aside[style*="calc(100% - 4rem)"] nav button {
+  padding: 12px 14px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 10px; /* space between arrow and text */
+  background: transparent;
+  color: #e6eef3;
+  border: none;
+  text-align: left;
+}
+
+/* Hover effect */
+aside[style*="calc(100% - 4rem)"] nav button:hover {
+  background-color: #374151;
+}
+
+/* Active state */
+aside[style*="calc(100% - 4rem)"] nav button.bg-green-200,
+aside[style*="calc(100% - 4rem)"] nav button[aria-pressed="true"] {
+  background-color: #10b981 !important;
+  color: white !important;
+  font-weight: 600 !important;
+}
+
+
+/* ===============================
+   ARROW ICON ON LEFT SIDE
+================================= */
+
+aside[style*="calc(100% - 4rem)"] nav button:before {
+  content: "";
+  width: 14px;
+  height: 14px;
+  display: inline-block;
+  background-image: url('/src/images/arrowlogo.jpg');
+  background-size: contain;
+  background-repeat: no-repeat;
+  opacity: 0.75;
+  transition: transform 0.3s ease;
+}
+
+/* Rotate arrow when active */
+aside[style*="calc(100% - 4rem)"] nav button.bg-green-200:before,
+aside[style*="calc(100% - 4rem)"] nav button[aria-pressed="true"]:before {
+  transform: rotate(90deg);
+  opacity: 1;
+}
+
+
+/* ===============================
+   PUSH MAIN CONTENT RIGHT
+================================= */
+
+.ml-64 {
+  margin-left: 250px !important;
+  padding-top: 80px;
+}
+
+
+/* ===============================
+   TOP NAVBAR STYLE
+================================= */
+
+.ml-64 > div.w-full.bg-white.shadow-sm.rounded-lg.px-6.py-3 {
+  background: white;
+  position: relative;
+  z-index: 1000;
+  border-bottom: 1px solid #e6eef3;
+  box-shadow: 0 2px 8px rgba(2,6,23,0.04);
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+
+/* Logout button */
+.ml-64 > div.w-full.bg-white.shadow-sm.rounded-lg.px-6.py-3 button {
+  background: #ef4444;
+  color: #fff;
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-weight: 500;
+  transition: filter 0.2s ease, transform 0.12s ease;
+  border: none;
+  cursor: pointer;
+}
+
+.ml-64 > div.w-full.bg-white.shadow-sm.rounded-lg.px-6.py-3 button:hover {
+  filter: brightness(0.9);
+  transform: translateY(-1px);
+}
+
+/* Card style for main content areas */
+.mt-4.bg-white.rounded-lg.p-6.shadow-sm,
+.bg-white.p-6.rounded-lg.shadow-md {
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 6px 25px rgba(0,0,0,0.05);
+  padding: 28px;
+  margin-bottom: 32px;
+}
+
+.mt-4.bg-white.rounded-lg.p-6.shadow-sm h1,
+.bg-white.p-6.rounded-lg.shadow-md h3,
+.bg-white.p-6.rounded-lg.shadow-md h2 {
+  color: #0f5132; /* deep green accent */
+  font-weight: 700;
+}
+
+/* Payment pending alert */
+.bg-yellow-50.border-l-4.border-yellow-400.p-4.rounded-lg {
+  background: #fff8e6;
+  border-left: 4px solid #f59e0b;
+  border-radius: 10px;
+  padding: 20px;
+}
+.bg-yellow-50.border-l-4.border-yellow-400.p-4.rounded-lg button {
+  background: #10b981;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-weight: 500;
+  transition: filter 0.2s ease;
+}
+.bg-yellow-50.border-l-4.border-yellow-400.p-4.rounded-lg button:hover { filter: brightness(0.95); }
+
+/* Bus pass redesign — white card with green header strip */
+.printable > div.mx-auto {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.05);
+}
+.printable .bg-green-700 {
+  background: #10b981 !important; /* green strip */
+  height: 40px !important;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+}
+.printable .p-4 {
+  padding: 16px !important;
+}
+.printable .w-16.h-12,
+.printable .w-16.h-16 {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+}
+.printable .w-20.h-20 {
+  border: 1px dashed #d1d5db;
+  border-radius: 8px;
+}
+.bus-pass-container { margin-top: 40px; display:flex; justify-content:center; }
+.printable p { margin: 4px 0; }
+
+/* Seat booking styles */
+button.inline-block.w-14.h-14.m-1.text-sm.border.rounded-lg {
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 6px !important;
+  border: 1px solid #d1d5db !important;
+  transition: all 0.2s ease !important;
+}
+button.inline-block.w-14.h-14.m-1.text-sm.border.rounded-lg.bg-white:hover {
+  background: #f3f4f6 !important;
+}
+button.inline-block.w-14.h-14.m-1.text-sm.border.rounded-lg.bg-green-400 {
+  background: #10b981 !important;
+  color: white !important;
+}
+button.inline-block.w-14.h-14.m-1.text-sm.border.rounded-lg.bg-gray-400 {
+  background: #9ca3af !important;
+  color: white !important;
+  cursor: not-allowed !important;
+}
+
+/* legend spacing */
+.mt-4.text-sm span.inline-block { width: 14px; height: 14px; display:inline-block; margin-right:6px; vertical-align:middle; }
+
+/* Complaint form inputs */
+.bg-white.p-6.rounded-lg.shadow-md input,
+.bg-white.p-6.rounded-lg.shadow-md textarea,
+.bg-white.p-6.rounded-lg.shadow-md select {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.bg-white.p-6.rounded-lg.shadow-md input:focus,
+.bg-white.p-6.rounded-lg.shadow-md textarea:focus,
+.bg-white.p-6.rounded-lg.shadow-md select:focus {
+  outline: none;
+  border-color: #10b981;
+  box-shadow: 0 0 0 2px rgba(16,185,129,0.12);
+}
+.bg-white.p-6.rounded-lg.shadow-md button[type="submit"] {
+  background: #10b981;
+  color: white;
+  border-radius: 8px;
+  padding: 10px 18px;
+}
+
+/* small responsive tweak */
+@media (max-width: 768px) {
+  aside[style*="calc(100% - 4rem)"] { position: relative; top: 0; height: auto; width: 100%; border-radius: 0 0 12px 12px; }
+  .ml-64 { margin-left: 0 !important; }
+}
+
+/* end senior overrides */
