@@ -1,16 +1,13 @@
 import React from "react";
 
 const menuItems = [
-  { key: "details", label: "Transport Details", icon: "fas fa-info-circle" },
-  { key: "renew", label: "Renew Bus", icon: "fas fa-retweet" },
-  { key: "changeBus", label: "Change Bus", icon: "fas fa-exchange-alt" },
+  { key: "dashboard", label: "Dashboard", icon: "fas fa-home" },
+  { key: "students", label: "Students", icon: "fas fa-users" },
+  { key: "attendance", label: "Attendance", icon: "fas fa-clipboard-list" },
   { key: "notices", label: "Notices", icon: "fas fa-bell" },
-  { key: "pass", label: "Download Bus Pass", icon: "fas fa-download" },
-  { key: "notices", label: "Notices", icon: "fas fa-bell" },
-  { key: "complaint", label: "Complaint", icon: "fas fa-exclamation-circle" },
 ];
 
-export default function SeniorSidebar({ active, onSelect }) {
+export default function InchargeSidebar({ active, onSelect }) {
   return (
     <aside
       className="fixed left-0 top-16 w-64 bg-slate-900 text-white shadow-xl flex flex-col"
@@ -19,7 +16,7 @@ export default function SeniorSidebar({ active, onSelect }) {
       {/* Header */}
       <div className="px-6 py-6 border-b border-slate-700">
         <h3 className="text-lg font-bold tracking-wide">
-          Student Menu
+          Incharge Menu
         </h3>
       </div>
 

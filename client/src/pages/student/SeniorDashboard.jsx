@@ -4,6 +4,8 @@ import SeniorTransportDetails from "./senior/SeniorTransportDetails";
 import SeniorRenewalOptions from "./senior/SeniorRenewalOptions";
 import SeniorBusPass from "./senior/SeniorBusPass";
 import SeniorComplaint from "./senior/SeniorComplaint";
+import SeniorChangeBus from "./senior/SeniorChangeBus";
+import SeniorNotices from "./senior/SeniorNotices";
 
 export default function SeniorDashboard() {
   const [activeSection, setActiveSection] = useState("details");
@@ -23,19 +25,31 @@ export default function SeniorDashboard() {
 
   const content = () => {
     if (!student) return <p>Loading transport data...</p>;
-    if (activeSection === "details") return <SeniorTransportDetails student={student} setStudent={setStudent} />;
-    if (activeSection === "renew") return <SeniorRenewalOptions student={student} setStudent={setStudent} />;
-    if (activeSection === "pass") return <SeniorBusPass student={student} />;
-    if (activeSection === "complaint") return <SeniorComplaint student={student} />;
-    return null;
-  };
+    switch (activeSection) {
+      case "details":
+        return <SeniorTransportDetails student={student} setStudent={setStudent} />;
+      case "renew":
+        return <SeniorRenewalOptions student={student} setStudent={setStudent} />;
+      case "pass":
+        return <SeniorBusPass student={student} />;
+      case "complaint":
+        return <SeniorComplaint student={student} />;
+      case "changeBus":
+      case "change":
+        return <SeniorChangeBus student={student} setStudent={setStudent} />;
+      case "notices":
+        return <SeniorNotices student={student} />;
+      default:
+        return null;
+    }
+  } // end of content()
 
   return (
-  <SeniorLayout
-    student={student}
-    active={activeSection}
-    onSelect={setActiveSection}
-  >
+    <SeniorLayout
+      student={student}
+      active={activeSection}
+      onSelect={setActiveSection}
+    >
     <div className="space-y-6">
 
       {activeSection === "details" && (
@@ -59,6 +73,18 @@ export default function SeniorDashboard() {
       {activeSection === "complaint" && (
         <h1 className="text-2xl font-bold text-green-700">
           Raise Complaint
+        </h1>
+      )}
+
+      {(activeSection === "changeBus" || activeSection === "change") && (
+        <h1 className="text-2xl font-bold text-green-700">
+          Change Bus
+        </h1>
+      )}
+
+      {activeSection === "notices" && (
+        <h1 className="text-2xl font-bold text-green-700">
+          Notices
         </h1>
       )}
 
