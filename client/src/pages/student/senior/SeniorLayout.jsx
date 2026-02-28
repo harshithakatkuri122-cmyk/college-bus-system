@@ -7,7 +7,7 @@ export default function SeniorLayout({ student, children, active, onSelect }) {
     <div className="min-h-screen bg-gray-100">
 
       {/* TOP GREEN STRIPE */}
-      <div className="fixed top-0 left-0 w-full h-16 bg-green-700 border-b-4 border-amber-900 z-40"></div>
+      <div className="fixed top-0 left-0 w-full h-12 bg-green-700 border-b-4 border-amber-900 z-40"></div>
 
       {/* Sidebar */}
       <SeniorSidebar active={active} onSelect={onSelect} />
