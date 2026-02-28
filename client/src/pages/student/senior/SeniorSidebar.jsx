@@ -6,7 +6,6 @@ const menuItems = [
   { key: "changeBus", label: "Change Bus", icon: "fas fa-exchange-alt" },
   { key: "notices", label: "Notices", icon: "fas fa-bell" },
   { key: "pass", label: "Download Bus Pass", icon: "fas fa-download" },
-  { key: "notices", label: "Notices", icon: "fas fa-bell" },
   { key: "complaint", label: "Complaint", icon: "fas fa-exclamation-circle" },
 ];
 

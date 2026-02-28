@@ -5,24 +5,27 @@ import { QRCodeSVG } from "qrcode.react";
 export default function SeniorBusPass({ student }) {
   // always render something; differentiate loading vs payment warning
   if (!student) {
-    return <p className="text-center text-gray-600">Loading bus pass information...</p>;
-  }
-
-  if (!student) {
-    return <p className="mt-10 text-center text-gray-600">Loading...</p>;
+    return (
+      <div className="min-h-[200px] flex items-center justify-center">
+        <p className="text-center text-gray-600">Loading bus pass information...</p>
+      </div>
+    );
   }
 
   if (student.paymentStatus !== "Active") {
-    // Show payment warning
+    // Show payment warning prominently
     return (
-      <div className="mt-10 flex flex-col items-center">
-        <div className="bg-yellow-50 border-l-4 border-yellow-500 rounded-lg p-6 max-w-xl">
+      <div className="min-h-[200px] flex items-center justify-center">
+        <div className="bg-yellow-100 border-l-4 border-yellow-500 rounded-lg p-6 max-w-xl">
           <div className="flex gap-3">
             <i className="fas fa-exclamation-circle text-yellow-600 text-xl mt-1"></i>
             <div>
               <h3 className="font-bold text-yellow-900 mb-2">Payment Required</h3>
               <p className="text-sm text-yellow-800">
                 Complete payment to activate and download your bus pass. Your payment status must be "Active" to use the bus service.
+              </p>
+              <p className="mt-2 text-xs text-gray-500">
+                (current status: {student.paymentStatus})
               </p>
             </div>
           </div>
@@ -31,7 +34,7 @@ export default function SeniorBusPass({ student }) {
     );
   }
 
-  const { name, rollNo, busNo, route, seatNo } = student;
+  const { name, rollNo, busNo, route, seatNo, paymentStatus } = student;
 
   // QR code data containing student info
   const qrData = JSON.stringify({
@@ -45,6 +48,7 @@ export default function SeniorBusPass({ student }) {
 
   return (
     <div className="mt-10 flex flex-col items-center pb-20">
+      <p className="text-xs text-gray-500 mb-2">Payment Status: {paymentStatus}</p>
       {/* Bus Pass Card - 85.6mm x 54mm */}
       <div
         className="printable relative bg-white shadow-2xl overflow-hidden flex flex-col"

@@ -35,14 +35,13 @@ export default function SeniorDashboard() {
       case "complaint":
         return <SeniorComplaint student={student} />;
       case "changeBus":
-      case "change":
         return <SeniorChangeBus student={student} setStudent={setStudent} />;
       case "notices":
         return <SeniorNotices student={student} />;
       default:
         return null;
     }
-  } // end of content()
+  }; // end of content()
 
   return (
     <SeniorLayout
