@@ -63,17 +63,6 @@ export default function InchargeDashboardPage({ incharge, onAttendanceClick }) {
             <i className="fas fa-check-circle text-green-300 text-4xl"></i>
           </div>
         </div>
-
-        {/* Bus Status */}
-        <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-2xl shadow-md p-6 border-l-4 border-red-500">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 font-medium mb-1">Bus Status</p>
-              <p className="text-lg font-bold text-red-700">{incharge?.status || "On Time"}</p>
-            </div>
-            <i className="fas fa-bus text-red-300 text-4xl"></i>
-          </div>
-        </div>
       </div>
 
       {/* Quick Actions & Recent Notices */}

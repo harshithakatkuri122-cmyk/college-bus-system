@@ -15,12 +15,15 @@ export default function SeniorDashboard() {
     const s = {
       name: "Harshitha Reddy",
       rollNo: "22CSE101",
-      paymentStatus: "Pending",
+      paymentStatus: "Active", // Changed to 'Active' to enable bus pass preview
       route: "KPHB - College",
       busNo: "Bus 12",
       seatNo: "15A",
     };
-    setTimeout(() => setStudent(s), 300);
+    setTimeout(() => {
+      setStudent(s);
+      console.log("Demo student data loaded:", s);
+    }, 300);
   }, []);
 
   const content = () => {
