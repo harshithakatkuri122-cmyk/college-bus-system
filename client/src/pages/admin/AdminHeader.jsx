@@ -2,27 +2,26 @@ import React from "react";
 import { useAuth } from "../../context/AuthContext";
 
 export default function AdminHeader() {
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
 
   return (
-    <div className="w-full">
-      <div className="h-1 bg-gradient-to-r from-green-600 to-green-500 w-full border-b-4 border-brown-600"></div>
-      <div className="h-2 bg-green-900 w-full border-b-4 border-brown-600"></div>
-      <header className="w-full bg-white shadow-sm px-20 py-6 flex justify-between items-center pl-64">
-        <div className="flex flex-col justify-center ml-4">
-          <h1 className="text-4xl font-bold text-gray-800 leading-tight">Admin Dashboard</h1>
-          <p className="text-sm text-gray-500 font-medium mt-1">Control panel</p>
+    <>
+      {/* Welcome header bar */}
+      <div className="mt-12 w-full pl-64 bg-white shadow-sm px-8 py-6 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className="text-4xl">👋</span>
+          <div>
+            <h2 className="text-3xl font-semibold text-gray-900">Welcome back, Admin!</h2>
+            <p className="text-sm text-gray-500 mt-1">Ready to manage your transport system</p>
+          </div>
         </div>
-        <div className="flex items-center gap-4">
-          <button className="px-6 py-3 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition shadow-md text-base">
-            Help
-          </button>
-          <button onClick={logout} className="bg-red-600 text-white px-8 py-3 rounded-lg hover:bg-red-700 transition shadow-md font-semibold text-base">
-            Logout
-          </button>
-        </div>
-      </header>
-      <div className="h-1 bg-green-600 w-full"></div>
-    </div>
+        <button
+          onClick={logout}
+          className="border-2 border-red-600 text-red-600 px-6 py-2 rounded-lg hover:bg-red-50 transition font-medium"
+        >
+          Logout
+        </button>
+      </div>
+    </>
   );
 }

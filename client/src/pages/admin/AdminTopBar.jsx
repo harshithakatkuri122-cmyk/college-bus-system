@@ -5,16 +5,16 @@ export default function AdminTopBar() {
   const { logout } = useAuth();
 
   return (
-    <div className="w-full">
-      <div className="h-2 bg-green-900 w-full border-b-4 border-brown-600"></div>
-      <div className="h-16 bg-gradient-to-r from-green-600 to-green-500 w-full flex items-center justify-end px-8 border-b-4 border-brown-600">
-        <button 
-          onClick={logout} 
-          className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition shadow-md font-semibold text-sm"
+    <>
+      {/* Top bar with logout aligned right */}
+      <div className="mt-12 w-full pl-64 bg-white shadow-sm px-8 py-4 flex justify-end">
+        <button
+          onClick={logout}
+          className="border-2 border-red-600 text-red-600 px-6 py-2 rounded-lg hover:bg-red-50 transition font-medium"
         >
           Logout
         </button>
       </div>
-    </div>
+    </>
   );
 }

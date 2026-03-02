@@ -243,6 +243,8 @@ export default function AdminDashboard() {
 
   return (
     <div className="flex min-h-screen">
+      {/* fixed stripe at top for admin pages */}
+      <div className="fixed top-0 left-0 w-full h-12 bg-green-700 border-b-4 border-amber-900 z-40" />
       <AdminSidebar active={activeSection} onSelect={setActiveSection} />
       <div className="flex-1 flex flex-col">
         {activeSection === "overview" && <AdminHeader />}
