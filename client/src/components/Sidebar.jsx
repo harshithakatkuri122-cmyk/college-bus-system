@@ -31,11 +31,14 @@ const menuItems = {
     { label: "Bus Timetable", to: "/incharge/timetable", icon: "fas fa-clock" },
   ],
   "transport-admin": [
+    { label: "Dashboard Overview", to: "/admin/overview", icon: "fas fa-tachometer-alt" },
     { label: "Manage Routes", to: "/admin/routes", icon: "fas fa-route" },
-    { label: "Switch Academic Year", to: "/admin/year", icon: "fas fa-calendar-alt" },
-    { label: "Assign Bus Incharges", to: "/admin/assign", icon: "fas fa-user-tag" },
-    { label: "View Students", to: "/admin/students", icon: "fas fa-users" },
-    { label: "Manage Complaints", to: "/admin/complaints", icon: "fas fa-exclamation-circle" },
+    { label: "Student Management", to: "/admin/students", icon: "fas fa-users" },
+    { label: "Bus Incharge Management", to: "/admin/incharges", icon: "fas fa-user-tag" },
+    { label: "Transactions", to: "/admin/transactions", icon: "fas fa-receipt" },
+    { label: "Notices", to: "/admin/notices", icon: "fas fa-bell" },
+    { label: "Academic Year & Booking", to: "/admin/academic", icon: "fas fa-calendar-alt" },
+    { label: "Reports / Analytics", to: "/admin/reports", icon: "fas fa-chart-bar" },
   ],
 };
 

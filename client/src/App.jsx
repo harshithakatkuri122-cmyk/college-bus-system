@@ -245,13 +245,7 @@ export default function App() {
           <Route
             path="/admin/*"
             element={<PrivateRoute roles={["transport-admin"]}><AdminDashboard /></PrivateRoute>}
-          >
-            <Route path="routes" element={<Placeholder title="Manage Routes" />} />
-            <Route path="year" element={<Placeholder title="Switch Academic Year" />} />
-            <Route path="assign" element={<Placeholder title="Assign Bus Incharges" />} />
-            <Route path="students" element={<Placeholder title="View Students" />} />
-            <Route path="complaints" element={<Placeholder title="Manage Complaints" />} />
-          </Route>
+          />
 
           {/* catch-all */}
           <Route path="*" element={<Navigate to="/" />} />
