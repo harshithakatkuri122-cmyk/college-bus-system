@@ -13,7 +13,8 @@
     "puppeteer": "^24.37.5",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-router-dom": "^6.14.1"
+    "react-router-dom": "^6.14.1",
+    "recharts": "^2.5.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

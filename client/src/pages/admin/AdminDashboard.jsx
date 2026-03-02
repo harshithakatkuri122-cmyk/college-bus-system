@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import AdminSidebar from "./AdminSidebar";
 import AdminHeader from "./AdminHeader";
+import AdminTopBar from "./AdminTopBar";
 import DashboardOverview from "./DashboardOverview";
 import RouteForm from "./RouteForm";
 import RouteTable from "./RouteTable";
@@ -113,7 +114,7 @@ export default function AdminDashboard() {
   };
 
   const viewStops = (stops) => {
-    alert(JSON.stringify(stops, null, 2));
+    alert(`Stops:\n${stops.map((s) => `${s.stopName} @ ${s.pickupTime}`).join("\n")}`);
   };
 
   const toggleRouteBooking = (id) => {
@@ -129,92 +130,141 @@ export default function AdminDashboard() {
   const renderSection = () => {
     switch (activeSection) {
       case "overview":
-        return (
-          <DashboardOverview
-            routes={routes}
-            students={students}
-            transactions={transactions}
-          />
-        );
+        return {
+          title: "Dashboard Overview",
+          content: (
+            <DashboardOverview
+              routes={routes}
+              students={students}
+              transactions={transactions}
+            />
+          ),
+        };
       case "routes":
-        return (
-          <>
-            {showRouteForm ? (
-              <RouteForm
-                initialData={editingRoute}
-                onSave={addOrUpdateRoute}
-                onCancel={() => setShowRouteForm(false)}
-              />
-            ) : (
-              <>
-                <button
-                  onClick={() => {
-                    setEditingRoute(null);
-                    setShowRouteForm(true);
-                  }}
-                  className="mb-4 px-4 py-2 bg-green-600 text-white rounded"
-                >
-                  + Add Route
-                </button>
-                <RouteTable
-                  routes={routes}
-                  onEdit={(r) => {
-                    setEditingRoute(r);
-                    setShowRouteForm(true);
-                  }}
-                  onDelete={deleteRoute}
-                  onToggleStatus={toggleRouteBooking}
-                  onViewStops={viewStops}
+        return {
+          title: "Manage Routes",
+          content: (
+            <>
+              {showRouteForm ? (
+                <RouteForm
+                  initialData={editingRoute}
+                  onSave={addOrUpdateRoute}
+                  onCancel={() => setShowRouteForm(false)}
                 />
-              </>
-            )}
-          </>
-        );
+              ) : (
+                <>
+                  <div className="flex justify-between items-center mb-6">
+                    <div>
+                      <h2 className="text-2xl font-bold text-gray-800">Route Management</h2>
+                      <p className="text-sm text-gray-500 mt-1">Create and manage all bus routes</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setEditingRoute(null);
+                        setShowRouteForm(true);
+                      }}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                    >
+                      <i className="fas fa-plus mr-2"></i> Add Route
+                    </button>
+                  </div>
+                  <RouteTable
+                    routes={routes}
+                    onEdit={(r) => {
+                      setEditingRoute(r);
+                      setShowRouteForm(true);
+                    }}
+                    onDelete={deleteRoute}
+                    onToggleStatus={toggleRouteBooking}
+                    onViewStops={viewStops}
+                  />
+                </>
+              )}
+            </>
+          ),
+        };
       case "students":
-        return <StudentTable students={students} />;
+        return {
+          title: "Student Management",
+          content: <StudentTable students={students} />,
+        };
       case "incharges":
-        return (
-          <InchargeManagement
-            incharges={incharges}
-            routes={routes}
-            setIncharges={setIncharges}
-          />
-        );
+        return {
+          title: "Bus Incharge Management",
+          content: (
+            <InchargeManagement
+              incharges={incharges}
+              routes={routes}
+              setIncharges={setIncharges}
+            />
+          ),
+        };
       case "transactions":
-        return <TransactionTable transactions={transactions} />;
+        return {
+          title: "Transactions",
+          content: <TransactionTable transactions={transactions} />,
+        };
       case "notices":
-        return <NoticeForm notices={notices} setNotices={setNotices} />;
+        return {
+          title: "Notices",
+          content: <NoticeForm notices={notices} setNotices={setNotices} />,
+        };
       case "academic":
-        return (
-          <AcademicControl
-            academicYear={academicYear}
-            setAcademicYear={setAcademicYear}
-            globalBookingOpen={globalBookingOpen}
-            setGlobalBookingOpen={setGlobalBookingOpen}
-            routes={routes}
-            toggleRouteBooking={toggleRouteBooking}
-          />
-        );
+        return {
+          title: "Academic Year & Booking",
+          content: (
+            <AcademicControl
+              academicYear={academicYear}
+              setAcademicYear={setAcademicYear}
+              globalBookingOpen={globalBookingOpen}
+              setGlobalBookingOpen={setGlobalBookingOpen}
+              routes={routes}
+              toggleRouteBooking={toggleRouteBooking}
+            />
+          ),
+        };
       case "reports":
-        return (
-          <ReportsSection
-            routes={routes}
-            students={students}
-            transactions={transactions}
-          />
-        );
+        return {
+          title: "Reports & Analytics",
+          content: (
+            <ReportsSection
+              routes={routes}
+              students={students}
+              transactions={transactions}
+            />
+          ),
+        };
       default:
-        return null;
+        return { title: "", content: null };
     }
   };
 
+  const { title, content } = renderSection();
+
   return (
-    <div className="flex">
+    <div className="flex min-h-screen">
       <AdminSidebar active={activeSection} onSelect={setActiveSection} />
-      <div className="flex-1 flex flex-col ml-64">
-        <AdminHeader />
-        <main className="p-6 bg-gray-50 flex-1 overflow-auto">
-          {renderSection()}
+      <div className="flex-1 flex flex-col">
+        {activeSection === "overview" && <AdminHeader />}
+        {activeSection !== "overview" && <AdminTopBar />}
+        <main className="pl-64 px-8 py-6 bg-gray-50 flex-1 overflow-auto">
+          <div className="max-w-7xl mx-auto">
+            {activeSection === "overview" && title && (
+              <div className="mb-6">
+                <h1 className="text-3xl font-bold text-gray-800">{title}</h1>
+                <p className="text-sm text-gray-500 mt-1">Manage and track your transportation system</p>
+              </div>
+            )}
+            {activeSection !== "overview" && title && (
+              <div className="mb-6">
+                <h1 className="text-3xl font-bold text-gray-800">{title}</h1>
+                <p className="text-sm text-gray-500 mt-1">Manage your transportation system</p>
+              </div>
+            )}
+            <div className={activeSection !== "overview" ? "border border-gray-300 border-opacity-40 rounded-xl p-6 bg-white shadow-sm" : ""}>
+              {content}
+            </div>
+          </div>
         </main>
       </div>
     </div>
