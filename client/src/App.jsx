@@ -1,6 +1,7 @@
 import cbitLogo from "./images/cbitlogo.png";
 import buses from "./images/busss.png";
 import { useState, useEffect } from "react";
+import PublicLayout from "./PublicLayout";
 import { BrowserRouter as Router, Routes, Route, Link, Navigate } from "react-router-dom";
 
 // context and pages
@@ -17,7 +18,7 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 
 // student feature pages
 import BookBus from "./pages/student/BookBus";
-import Renewal from "./pages/student/Renewal";
+// senior renewal handled inside SeniorDashboard now
 import Placeholder from "./pages/Placeholder";
 
 export default function App() {
@@ -174,159 +175,117 @@ export default function App() {
     );
   }
 
-  return (
-    <Router>
-      <AuthProvider>
-        <div className="bg-gray-50 min-h-screen">
+ return (
+  <Router>
+    <AuthProvider>
+      
+        
+        {/* ================= TOP GREEN BAR (STICKY) ================= */}
+        
 
-      {/* ================= TOP GREEN BAR (STICKY) ================= */}
-      <div className={`fixed top-0 w-full z-50 bg-green-700 text-white h-16 flex items-center px-10 transition-shadow duration-300 border-b-4 border-amber-900 ${isScrolled ? "shadow-xl" : "shadow-md"}`}>
-        <div className="flex justify-end items-center space-x-10 w-full">
-          <a href="#footer" className="text-white font-medium text-sm relative group hover:text-green-50 transition-colors duration-300">
-            About Us
-            <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-white transition-all duration-300 group-hover:w-full"></span>
-          </a>
-          <a href="#footer" className="text-white font-medium text-sm relative group hover:text-green-50 transition-colors duration-300">
-            Contact Us
-            <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-white transition-all duration-300 group-hover:w-full"></span>
-          </a>
-        </div>
-      </div>
+        {/* Spacer for fixed header */}
+        
 
-      {/* Spacer for fixed header */}
-      <div className="h-16"></div>
+        {/* ================= HEADER WITH LOGO & TEXT ================= */}
+        
+        {/* ================= MAIN ROUTING SECTION ================= */}
+        <Routes>
+          <Route path="/" element={<PublicLayout><HomePage /></PublicLayout>} />
+          <Route path="/login" element={<PublicLayout><LoginPage /></PublicLayout>} />
+          <Route path="/procedure" element={<PublicLayout><BookingProcedure /></PublicLayout>} />
 
-      {/* ================= HEADER WITH LOGO & TEXT ================= */}
-      <header className="bg-white border-b-4 border-yellow-700 py-3 px-10 shadow-sm">
-        <div className="flex items-center justify-between">
-          {/* Left Side: Logo + Institute Text */}
-          <Link to="/" className="flex items-center space-x-6 cursor-pointer">
-            <img
-              src={cbitLogo}
-              alt="CBIT Logo"
-              className="h-28 w-auto object-contain"
-            />
-          </Link>
+          {/* student junior routes */}
+          <Route 
+            path="/student/junior/*" 
+            element={<PrivateRoute roles={["student-junior"]}><JuniorDashboard /></PrivateRoute>}
+          >
+            <Route path="book" element={<BookBus />} />
+            <Route path="change" element={<Placeholder title="Change Bus" />} />
+            <Route path="pass" element={<Placeholder title="View / Download Bus Pass" />} />
+            <Route path="complaint" element={<Placeholder title="Raise Complaint" />} />
+            <Route path="timetable" element={<Placeholder title="Bus Timetable" />} />
+          </Route>
 
-              {/* Right Side: Login Button */}
-          <Link to="/login" className="group relative px-10 py-3.5 bg-green-700 text-white font-bold text-base rounded-lg shadow-md hover:shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 hover:bg-green-800 flex items-center space-x-2">
-            <span>Login</span>
-            <i className="fas fa-arrow-right group-hover:translate-x-1 transition-transform duration-300"></i>
-            <span className="absolute inset-0 rounded-lg bg-green-600 opacity-0 group-hover:opacity-10 transition-opacity duration-300"></span>
-          </Link>
-        </div>
-      </header>
+          {/* student senior */}
+          <Route
+  path="/student/senior/*"
+  element={
+    <PrivateRoute roles={["student-senior"]}>
+      <SeniorDashboard />
+    </PrivateRoute>
+  }
+/>
 
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/procedure" element={<BookingProcedure />} />
+          {/* faculty */}
+          <Route
+            path="/faculty/*"
+            element={<PrivateRoute roles={["faculty"]}><FacultyDashboard /></PrivateRoute>}
+          >
+            <Route path="pass" element={<Placeholder title="View Bus Pass" />} />
+            <Route path="complaint" element={<Placeholder title="Raise Complaint" />} />
+            <Route path="timetable" element={<Placeholder title="Bus Timetable" />} />
+          </Route>
 
-        {/* student junior routes */}
-        <Route
-          path="/student/junior/*"
-          element={<PrivateRoute roles={["student-junior"]}><JuniorDashboard /></PrivateRoute>}
-        >
-          <Route path="book" element={<BookBus />} />
-          <Route path="change" element={<Placeholder title="Change Bus" />} />
-          <Route path="pass" element={<Placeholder title="View / Download Bus Pass" />} />
-          <Route path="complaint" element={<Placeholder title="Raise Complaint" />} />
-          <Route path="timetable" element={<Placeholder title="Bus Timetable" />} />
-        </Route>
+          {/* bus incharge */}
+          <Route
+            path="/incharge/*"
+            element={<PrivateRoute roles={["bus-incharge"]}><InchargeDashboard /></PrivateRoute>}
+          >
+            <Route path="assigned" element={<Placeholder title="Assigned Bus Details" />} />
+            <Route path="students" element={<Placeholder title="Student List" />} />
+            <Route path="timetable" element={<Placeholder title="Bus Timetable" />} />
+          </Route>
 
-        {/* student senior */}
-        <Route
-          path="/student/senior/*"
-          element={<PrivateRoute roles={["student-senior"]}><SeniorDashboard /></PrivateRoute>}
-        >
-          <Route path="renewal" element={<Renewal />} />
-          <Route path="change" element={<Placeholder title="Change Bus" />} />
-          <Route path="pass" element={<Placeholder title="View / Download Bus Pass" />} />
-          <Route path="complaint" element={<Placeholder title="Raise Complaint" />} />
-          <Route path="timetable" element={<Placeholder title="Bus Timetable" />} />
-        </Route>
+          {/* admin */}
+          <Route
+            path="/admin/*"
+            element={<PrivateRoute roles={["transport-admin"]}><AdminDashboard /></PrivateRoute>}
+          >
+            <Route path="routes" element={<Placeholder title="Manage Routes" />} />
+            <Route path="year" element={<Placeholder title="Switch Academic Year" />} />
+            <Route path="assign" element={<Placeholder title="Assign Bus Incharges" />} />
+            <Route path="students" element={<Placeholder title="View Students" />} />
+            <Route path="complaints" element={<Placeholder title="Manage Complaints" />} />
+          </Route>
 
-        {/* faculty */}
-        <Route
-          path="/faculty/*"
-          element={<PrivateRoute roles={["faculty"]}><FacultyDashboard /></PrivateRoute>}
-        >
-          <Route path="pass" element={<Placeholder title="View Bus Pass" />} />
-          <Route path="complaint" element={<Placeholder title="Raise Complaint" />} />
-          <Route path="timetable" element={<Placeholder title="Bus Timetable" />} />
-        </Route>
+          {/* catch-all */}
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
 
-        {/* bus incharge */}
-        <Route
-          path="/incharge/*"
-          element={<PrivateRoute roles={["bus-incharge"]}><InchargeDashboard /></PrivateRoute>}
-        >
-          <Route path="assigned" element={<Placeholder title="Assigned Bus Details" />} />
-          <Route path="students" element={<Placeholder title="Student List" />} />
-          <Route path="timetable" element={<Placeholder title="Bus Timetable" />} />
-        </Route>
+        {/* ================= FOOTER ================= */}
+       
 
-        {/* admin */}
-        <Route
-          path="/admin/*"
-          element={<PrivateRoute roles={["transport-admin"]}><AdminDashboard /></PrivateRoute>}
-        >
-          <Route path="routes" element={<Placeholder title="Manage Routes" />} />
-          <Route path="year" element={<Placeholder title="Switch Academic Year" />} />
-          <Route path="assign" element={<Placeholder title="Assign Bus Incharges" />} />
-          <Route path="students" element={<Placeholder title="View Students" />} />
-          <Route path="complaints" element={<Placeholder title="Manage Complaints" />} />
-        </Route>
-
-        {/* catch-all */}
-        <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
-
-      {/* ================= FOOTER ================= */}
-      <footer
-        id="footer"
-        className="bg-gray-900 text-white px-20 py-12 border-t-4 border-yellow-800"
-      >
-        <div className="grid grid-cols-3 gap-8 mb-8">
-          <div>
-            <h3 className="text-lg font-bold text-yellow-400 mb-4">Contact Info</h3>
-            <p className="text-sm leading-relaxed">
-              Gandipet, Hyderabad, Telangana,<br />
-              PIN : 500075<br />
-              <br />
-              <strong>Mobile:</strong> 8466997201<br />
-              <strong>Admissions:</strong> 8466997216<br />
-              <strong>Email:</strong> transport@cbit.ac.in
-            </p>
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-yellow-400 mb-4">Quick Links</h3>
-            <ul className="text-sm space-y-2">
-              <li><a href="#" className="hover:text-yellow-400 transition">Home</a></li>
-              <li><a href="#" className="hover:text-yellow-400 transition">Routes</a></li>
-              <li><a href="#" className="hover:text-yellow-400 transition">Booking</a></li>
-              <li><a href="#" className="hover:text-yellow-400 transition">Schedules</a></li>
-            </ul>
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-yellow-400 mb-4">About Transport</h3>
-            <p className="text-sm leading-relaxed">
-              CBIT provides safe and reliable transportation for all students, faculty, and staff. Our modern fleet ensures comfortable and punctual service.
-            </p>
-          </div>
-        </div>
-        <div className="border-t border-gray-700 pt-8 text-center">
-          <p className="text-sm text-gray-400">
-            © 2025 CBIT Transport System | Developed by Hasini and Harshitha
-          </p>
-        </div>
-      </footer>
-
-        </div>
-      </AuthProvider>
-    </Router>
-  );
+      
+    </AuthProvider>
+  </Router>
+);
 }
+
+  // small helper to show login/logout button in header
+  function AuthToggle() {
+    const { user, logout } = useAuth();
+    // hide global logout when senior dashboard is active; senior layout will show its own navbar/logout
+    if (user && user.role === "student-senior") return null;
+    if (user) {
+      return (
+        <button
+          onClick={logout}
+          className="group relative px-10 py-3.5 bg-red-600 text-white font-bold text-base rounded-lg shadow-md hover:shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 hover:bg-red-700 flex items-center space-x-2"
+        >
+          <span>Logout</span>
+          <i className="fas fa-sign-out-alt group-hover:rotate-90 transition-transform duration-300"></i>
+        </button>
+      );
+    }
+    return (
+      <Link to="/login" className="group relative px-10 py-3.5 bg-green-700 text-white font-bold text-base rounded-lg shadow-md hover:shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 hover:bg-green-800 flex items-center space-x-2">
+        <span>Login</span>
+        <i className="fas fa-arrow-right group-hover:translate-x-1 transition-transform duration-300"></i>
+        <span className="absolute inset-0 rounded-lg bg-green-600 opacity-0 group-hover:opacity-10 transition-opacity duration-300"></span>
+      </Link>
+    );
+  }
+          
 
 // helper component for guarding routes
 function PrivateRoute({ children, roles }) {
