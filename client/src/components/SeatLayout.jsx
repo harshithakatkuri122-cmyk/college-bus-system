@@ -13,8 +13,11 @@ export default function SeatLayout({
 
   function toggleSeat(number) {
     if (bookedSeats.includes(number) || disabledSeats.includes(number)) return;
-    setSelected((prev) => (prev === number ? null : number));
-    if (onSelectionChange) onSelectionChange(prev === number ? null : number);
+    setSelected((prev) => {
+      const newSelected = prev === number ? null : number;
+      if (onSelectionChange) onSelectionChange(newSelected);
+      return newSelected;
+    });
   }
 
   const renderSeat = (number) => {

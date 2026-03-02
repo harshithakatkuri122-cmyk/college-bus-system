@@ -18,8 +18,14 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 
 // student feature pages
 import BookBus from "./pages/student/BookBus";
+import JuniorHome from "./pages/student/JuniorHome";
+import JuniorPass from "./pages/student/JuniorPass";
 // senior renewal handled inside SeniorDashboard now
 import Placeholder from "./pages/Placeholder";
+import JuniorDetails from "./pages/student/JuniorDetails";
+import JuniorChangeBus from "./pages/student/JuniorChangeBus";
+import JuniorNotices from "./pages/student/JuniorNotices";
+import JuniorComplaint from "./pages/student/JuniorComplaint";
 
 export default function App() {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -199,11 +205,14 @@ export default function App() {
             path="/student/junior/*" 
             element={<PrivateRoute roles={["student-junior"]}><JuniorDashboard /></PrivateRoute>}
           >
+            {/* index redirects to booking to avoid duplicate widgets */}
+            <Route index element={<Navigate to="book" replace />} />
+            <Route path="details" element={<JuniorDetails />} />
             <Route path="book" element={<BookBus />} />
-            <Route path="change" element={<Placeholder title="Change Bus" />} />
-            <Route path="pass" element={<Placeholder title="View / Download Bus Pass" />} />
-            <Route path="complaint" element={<Placeholder title="Raise Complaint" />} />
-            <Route path="timetable" element={<Placeholder title="Bus Timetable" />} />
+            <Route path="change" element={<JuniorChangeBus />} />
+            <Route path="pass" element={<JuniorPass />} />
+            <Route path="complaint" element={<JuniorComplaint />} />
+            <Route path="timetable" element={<JuniorNotices />} />
           </Route>
 
           {/* student senior */}

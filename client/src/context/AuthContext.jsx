@@ -6,6 +6,7 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
+  const [student, setStudent] = useState(null);
 
   // fake login: determine role based on id prefix or hardcoded mapping
   function login(id, password) {
@@ -21,9 +22,13 @@ export function AuthProvider({ children }) {
     // navigate to appropriate dashboard
     switch (role) {
       case "student-junior":
+        // initialize demo junior student state
+        setStudent({ name: "Demo Junior", rollNo: "23CSE201", year: 1, hasBookedBus: false, hasPaidFees: false, paymentStatus: "Inactive" });
         navigate("/student/junior");
         break;
       case "student-senior":
+        // initialize demo senior student state
+        setStudent({ name: "Harshitha Reddy", rollNo: "22CSE101", year: 4, paymentStatus: "Active", route: "KPHB - College", busNo: "Bus 12", seatNo: "15A" });
         navigate("/student/senior");
         break;
       case "faculty":
@@ -45,7 +50,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
+    <AuthContext.Provider value={{ user, login, logout, student, setStudent }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,0 +1,46 @@
+import React from "react";
+
+const ALL_FEATURES = [
+  { key: "details", label: "Transport Details", icon: "fas fa-info-circle" },
+  { key: "renew", label: "Renew Bus", icon: "fas fa-retweet" },
+  { key: "book", label: "Book a Bus", icon: "fas fa-chair" },
+  { key: "changeBus", label: "Change Bus", icon: "fas fa-exchange-alt" },
+  { key: "notices", label: "Notices", icon: "fas fa-bell" },
+  { key: "pass", label: "Download Bus Pass", icon: "fas fa-download" },
+  { key: "complaint", label: "Complaint", icon: "fas fa-exclamation-circle" },
+];
+
+export default function Features({ student, onSelect }) {
+  // student.year: 1 -> junior, >1 -> senior
+  const isJunior = student && Number(student.year) === 1;
+
+  const features = ALL_FEATURES.filter((f) => {
+    if (isJunior) {
+      // juniors must not see renewal or booking
+      return f.key !== "renew" && f.key !== "book";
+    }
+    return true;
+  });
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+      {features.map((it) => (
+        <button
+          key={it.key}
+          onClick={() => onSelect && onSelect(it.key)}
+          className="text-left p-6 bg-gradient-to-br from-white to-gray-50 rounded-xl shadow hover:shadow-md transition"
+        >
+          <div className="flex items-center gap-4">
+            <div className="text-2xl text-green-600">
+              <i className={it.icon} />
+            </div>
+            <div>
+              <div className="font-semibold text-lg text-gray-800">{it.label}</div>
+              <div className="text-sm text-gray-500">Quick access</div>
+            </div>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}

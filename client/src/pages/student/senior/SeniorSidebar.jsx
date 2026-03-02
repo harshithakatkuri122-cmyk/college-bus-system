@@ -9,7 +9,20 @@ const menuItems = [
   { key: "complaint", label: "Complaint", icon: "fas fa-exclamation-circle" },
 ];
 
-export default function SeniorSidebar({ active, onSelect }) {
+export default function SeniorSidebar({ active, onSelect, hideRenew = false }) {
+  const baseItems = [
+    { key: "details", label: "Transport Details", icon: "fas fa-info-circle" },
+    { key: "renew", label: "Renew Bus", icon: "fas fa-retweet" },
+    { key: "changeBus", label: "Change Bus", icon: "fas fa-exchange-alt" },
+    { key: "notices", label: "Notices", icon: "fas fa-bell" },
+    { key: "pass", label: "Download Bus Pass", icon: "fas fa-download" },
+    { key: "complaint", label: "Complaint", icon: "fas fa-exclamation-circle" },
+  ];
+
+  const menuItems = hideRenew
+    ? baseItems.filter((it) => it.key !== "renew")
+    : baseItems;
+
   return (
     <aside
       className="fixed left-0 top-16 w-64 bg-slate-900 text-white shadow-xl flex flex-col"
