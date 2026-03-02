@@ -6,6 +6,7 @@ export default function SeniorTransportDetails({ student }) {
   const {
     name,
     rollNo,
+    facultyId,
     route,
     busNo,
     seatNo,
@@ -32,8 +33,10 @@ export default function SeniorTransportDetails({ student }) {
             </div>
 
             <div>
-              <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Roll Number</p>
-              <p className="text-lg font-mono text-gray-800">{rollNo}</p>
+              <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">
+                {rollNo ? "Roll Number" : "Faculty ID"}
+              </p>
+              <p className="text-2xl font-bold text-gray-800">{rollNo || facultyId}</p>
             </div>
 
             <div>

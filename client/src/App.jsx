@@ -225,15 +225,11 @@ export default function App() {
   }
 />
 
-          {/* faculty */}
+          {/* faculty (single-screen dashboard like senior) */}
           <Route
             path="/faculty/*"
             element={<PrivateRoute roles={["faculty"]}><FacultyDashboard /></PrivateRoute>}
-          >
-            <Route path="pass" element={<Placeholder title="View Bus Pass" />} />
-            <Route path="complaint" element={<Placeholder title="Raise Complaint" />} />
-            <Route path="timetable" element={<Placeholder title="Bus Timetable" />} />
-          </Route>
+          />
 
           {/* bus incharge */}
           <Route

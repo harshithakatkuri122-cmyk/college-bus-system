@@ -17,9 +17,13 @@ const menuItems = {
     { label: "View Bus Timetable", to: "/student/senior/timetable", icon: "fas fa-clock" },
   ],
   faculty: [
-    { label: "View Bus Pass", to: "/faculty/pass", icon: "fas fa-id-card" },
+    { label: "Transport Details", to: "/faculty/details", icon: "fas fa-info-circle" },
+    { label: "Renew Bus", to: "/faculty/renew", icon: "fas fa-retweet" },
+    { label: "Change Bus", to: "/faculty/change", icon: "fas fa-exchange-alt" },
+    { label: "Download Bus Pass", to: "/faculty/pass", icon: "fas fa-id-card" },
     { label: "Raise Complaint", to: "/faculty/complaint", icon: "fas fa-comment-dots" },
     { label: "View Bus Timetable", to: "/faculty/timetable", icon: "fas fa-clock" },
+    { label: "Notices", to: "/faculty/notices", icon: "fas fa-bell" },
   ],
   "bus-incharge": [
     { label: "Assigned Bus Details", to: "/incharge/assigned", icon: "fas fa-bus" },

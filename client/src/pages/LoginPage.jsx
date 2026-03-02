@@ -38,6 +38,10 @@ export default function LoginPage() {
           <p className="text-gray-600 text-sm mb-6">
             Sign in to your transport account
           </p>
+          <p className="text-gray-500 text-xs mb-4">
+            For demo simply use an ID starting with <code>fac</code> for faculty, <code>ss</code> for senior
+            students or any other prefix – password is ignored.
+          </p>
 
           <form onSubmit={handleSubmit}>
             <div className="mb-5">

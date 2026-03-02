@@ -7,6 +7,7 @@ export function AuthProvider({ children }) {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [student, setStudent] = useState(null);
+  const [faculty, setFaculty] = useState(null);
 
   // fake login: determine role based on id prefix or hardcoded mapping
   function login(id, password) {
@@ -32,6 +33,8 @@ export function AuthProvider({ children }) {
         navigate("/student/senior");
         break;
       case "faculty":
+        // demo faculty transport record
+        setFaculty({ name: "Prof. Sudha Rao", facultyId: "FAC123", paymentStatus: "Active", route: "KPHB - College", busNo: "Bus 5", seatNo: "2C" });
         navigate("/faculty");
         break;
       case "bus-incharge":
@@ -50,7 +53,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, student, setStudent }}>
+    <AuthContext.Provider value={{ user, login, logout, student, setStudent, faculty, setFaculty }}>
       {children}
     </AuthContext.Provider>
   );
