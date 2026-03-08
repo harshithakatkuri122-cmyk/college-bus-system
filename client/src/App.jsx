@@ -203,7 +203,7 @@ export default function App() {
           {/* student junior routes */}
           <Route 
             path="/student/junior/*" 
-            element={<PrivateRoute roles={["student-junior"]}><JuniorDashboard /></PrivateRoute>}
+            element={<PrivateRoute roles={["student"]} studentYear={1}><JuniorDashboard /></PrivateRoute>}
           >
             {/* index redirects to booking to avoid duplicate widgets */}
             <Route index element={<Navigate to="book" replace />} />
@@ -219,7 +219,7 @@ export default function App() {
           <Route
   path="/student/senior/*"
   element={
-    <PrivateRoute roles={["student-senior"]}>
+    <PrivateRoute roles={["student"]} studentYear="senior">
       <SeniorDashboard />
     </PrivateRoute>
   }
@@ -264,7 +264,7 @@ export default function App() {
   function AuthToggle() {
     const { user, logout } = useAuth();
     // hide global logout when senior dashboard is active; senior layout will show its own navbar/logout
-    if (user && user.role === "student-senior") return null;
+    if (user && user.role === "student") return null;
     if (user) {
       return (
         <button
@@ -287,9 +287,21 @@ export default function App() {
           
 
 // helper component for guarding routes
-function PrivateRoute({ children, roles }) {
-  const { user } = useAuth();
+function PrivateRoute({ children, roles, studentYear }) {
+  const { user, student } = useAuth();
   if (!user) return <Navigate to="/login" />;
   if (roles && !roles.includes(user.role)) return <Navigate to="/" />;
+
+  // Keep junior/senior student routes consistent with DB profile year.
+  if (user.role === "student" && studentYear) {
+    const year = Number(student?.year);
+
+    // Wait for profile fetch after refresh so we do not mis-route immediately.
+    if (!year) return null;
+
+    if (studentYear === 1 && year !== 1) return <Navigate to="/student/senior" replace />;
+    if (studentYear === "senior" && year === 1) return <Navigate to="/student/junior" replace />;
+  }
+
   return children;
 }

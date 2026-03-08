@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 const AuthContext = createContext(null);
@@ -9,45 +9,84 @@ export function AuthProvider({ children }) {
   const [student, setStudent] = useState(null);
   const [faculty, setFaculty] = useState(null);
 
-  // fake login: determine role based on id prefix or hardcoded mapping
-  function login(id, password) {
-    // in a real app you'd call an API
-    let role = "student-junior";
-    if (id.toLowerCase().startsWith("ss")) role = "student-senior";
-    else if (id.toLowerCase().startsWith("fac")) role = "faculty";
-    else if (id.toLowerCase().startsWith("inc")) role = "bus-incharge";
-    else if (id.toLowerCase().startsWith("admin")) role = "transport-admin";
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
 
-    const fakeUser = { id, role };
-    setUser(fakeUser);
-    // navigate to appropriate dashboard
-    switch (role) {
-      case "student-junior":
-        // initialize demo junior student state
-        setStudent({ name: "Demo Junior", rollNo: "23CSE201", year: 1, hasBookedBus: false, hasPaidFees: false, paymentStatus: "Inactive" });
-        navigate("/student/junior");
-        break;
-      case "student-senior":
-        // initialize demo senior student state
-        setStudent({ name: "Harshitha Reddy", rollNo: "22CSE101", year: 4, paymentStatus: "Active", route: "KPHB - College", busNo: "Bus 12", seatNo: "15A" });
-        navigate("/student/senior");
-        break;
-      case "faculty":
-        // demo faculty transport record
-        setFaculty({ name: "Prof. Sudha Rao", facultyId: "FAC123", paymentStatus: "Active", route: "KPHB - College", busNo: "Bus 5", seatNo: "2C" });
+    fetch("http://localhost:5000/api/auth/me", {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (!data.user) return;
+
+        setUser(data.user);
+
+        if (data.user.role === "student") {
+          setStudent(data.profile);
+        }
+
+        if (data.user.role === "faculty") {
+          setFaculty(data.profile);
+        }
+      })
+      .catch(err => console.error(err));
+  }, []);
+
+  async function login(college_id, password) {
+    try {
+      // Keep payload keys aligned with backend login contract.
+      const res = await fetch("http://localhost:5000/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ college_id, password })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || "Login failed");
+      }
+
+      localStorage.setItem("token", data.token);
+
+      const loggedUser = data.user;
+      setUser(loggedUser);
+
+      if (loggedUser.role === "student") {
+        setStudent(data.profile);
+
+        if (data.profile.year === 1) {
+          navigate("/student/junior");
+        } else {
+          navigate("/student/senior");
+        }
+      }
+
+      if (loggedUser.role === "faculty") {
+        setFaculty(data.profile);
         navigate("/faculty");
-        break;
-      case "bus-incharge":
+      }
+
+      if (loggedUser.role === "bus-incharge") {
         navigate("/incharge");
-        break;
-      case "transport-admin":
+      }
+
+      if (loggedUser.role === "transport-admin") {
         navigate("/admin");
-        break;
+      }
+    } catch (err) {
+      console.error(err);
+      alert(err.message);
     }
-    return fakeUser;
   }
 
   function logout() {
+    localStorage.removeItem("token");
     setUser(null);
     navigate("/login");
   }

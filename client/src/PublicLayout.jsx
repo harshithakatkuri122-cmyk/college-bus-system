@@ -1,10 +1,7 @@
 import { Link } from "react-router-dom";
-import { useAuth } from "./context/AuthContext";
 import cbitLogo from "./images/cbitlogo.png";
 
 export default function PublicLayout({ children }) {
-  const { user, logout } = useAuth();
-
   return (
     <>
       {/* TOP GREEN BAR */}
@@ -28,18 +25,9 @@ export default function PublicLayout({ children }) {
             />
           </Link>
 
-          {user ? (
-            <button
-              onClick={logout}
-              className="px-6 py-2 bg-red-600 text-white rounded-lg"
-            >
-              Logout
-            </button>
-          ) : (
-            <Link to="/login" className="px-6 py-2 bg-green-700 text-white rounded-lg">
-              Login
-            </Link>
-          )}
+          <Link to="/login" className="px-6 py-2 bg-green-700 text-white rounded-lg">
+            Login
+          </Link>
         </div>
       </header>
 
