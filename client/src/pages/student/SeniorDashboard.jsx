@@ -16,6 +16,35 @@ export default function SeniorDashboard() {
   const [localStudent, setLocalStudent] = useState(student || null);
 
   useEffect(() => {
+    async function refreshStudentStatus() {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      try {
+        const res = await fetch("/api/student/my-status", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        const data = await res.json();
+        if (!res.ok) return;
+
+        setStudent((prev) => ({
+          ...(prev || {}),
+          ...data,
+          hasBookedBus: Boolean(data.bus_no),
+          hasPaidFees: data.payment_status === "Active",
+        }));
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    refreshStudentStatus();
+  }, [setStudent]);
+
+  useEffect(() => {
     setLocalStudent(student || null);
   }, [student]);
 
@@ -27,7 +56,7 @@ export default function SeniorDashboard() {
       case "renew":
         return <SeniorRenewalOptions student={student} setStudent={setStudent} />;
       case "pass":
-        return <SeniorBusPass student={student} />;
+        return <SeniorBusPass student={student} setStudent={setStudent} />;
       case "complaint":
         return <SeniorComplaint student={student} />;
       case "changeBus":

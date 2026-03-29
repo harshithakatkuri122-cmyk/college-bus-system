@@ -13,7 +13,7 @@ export function AuthProvider({ children }) {
     const token = localStorage.getItem("token");
     if (!token) return;
 
-    fetch("http://localhost:5000/api/auth/me", {
+    fetch("/api/auth/me", {
       headers: {
         Authorization: `Bearer ${token}`
       }
@@ -38,7 +38,7 @@ export function AuthProvider({ children }) {
   async function login(college_id, password) {
     try {
       // Keep payload keys aligned with backend login contract.
-      const res = await fetch("http://localhost:5000/api/auth/login", {
+      const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"

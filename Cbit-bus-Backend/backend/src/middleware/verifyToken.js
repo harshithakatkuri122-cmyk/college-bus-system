@@ -11,7 +11,11 @@ const verifyToken = (req, res, next) => {
     const token = authHeader.split(" ")[1]; // remove "Bearer"
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    req.user = decoded; // attach user info to request
+    req.user = {
+      id: decoded.id,
+      role: decoded.role,
+    };
+
     next();
   } catch (error) {
     return res.status(401).json({ message: "Invalid token" });

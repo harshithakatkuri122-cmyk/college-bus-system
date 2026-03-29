@@ -1,13 +1,78 @@
-import React from "react";
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import logo from "../../../images/justlogo.jpg";
 
-export default function SeniorBusPass({ student }) {
-  try {
-    console.log("SeniorBusPass component mounted with student:", student);
+const PAY_ENDPOINT = "/api/student/pay";
+const STATUS_ENDPOINT = "/api/student/my-status";
 
-    // Loading state
+export default function SeniorBusPass({ student, setStudent }) {
+  const navigate = useNavigate();
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState("");
+
+  const name = student?.name || "-";
+  const rollNo = student?.roll_no || student?.rollNo || "-";
+  const busNo = student?.bus_no || student?.busNo;
+  const seatNo = student?.seat_no || student?.seatNo;
+  const route = student?.route || "-";
+  const paymentStatus = student?.payment_status || student?.paymentStatus || "Inactive";
+  const bookPath = Number(student?.year) === 1 ? "/student/junior/book" : "/student/senior";
+
+  async function handlePayNow() {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      setPayError("Please login again to continue payment.");
+      return;
+    }
+
+    try {
+      setPaying(true);
+      setPayError("");
+
+      const payRes = await fetch(PAY_ENDPOINT, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const payData = await payRes.json();
+      if (!payRes.ok) {
+        throw new Error(payData.message || "Payment failed");
+      }
+
+      const statusRes = await fetch(STATUS_ENDPOINT, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const statusData = await statusRes.json();
+      if (!statusRes.ok) {
+        throw new Error(statusData.message || "Failed to refresh status");
+      }
+
+      if (setStudent) {
+        setStudent((prev) => ({
+          ...(prev || {}),
+          ...statusData,
+          hasBookedBus: Boolean(statusData.bus_no),
+          hasPaidFees: statusData.payment_status === "Active",
+        }));
+      }
+
+      window.dispatchEvent(new Event("student-status-refresh"));
+    } catch (error) {
+      console.error(error);
+      setPayError(error.message || "Unable to complete payment");
+    } finally {
+      setPaying(false);
+    }
+  }
+
+  try {
     if (!student) {
-      console.log("Student not loaded yet");
       return (
         <div className="flex items-center justify-center min-h-80">
           <div className="text-center">
@@ -20,10 +85,33 @@ export default function SeniorBusPass({ student }) {
       );
     }
 
-    console.log("Student payment status:", student.paymentStatus);
+    if (!busNo || !seatNo) {
+      return (
+        <div className="flex items-center justify-center min-h-80">
+          <div className="w-full max-w-md">
+            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-8">
+              <div className="flex flex-col items-center text-center">
+                <div className="mb-4 p-4 bg-blue-100 rounded-full">
+                  <i className="fas fa-bus text-blue-700 text-3xl"></i>
+                </div>
+                <h3 className="text-xl font-semibold text-blue-900 mb-2">Book Bus</h3>
+                <p className="text-sm text-blue-800 mb-5">
+                  No seat is assigned yet. Book your bus seat to continue.
+                </p>
+                <button
+                  onClick={() => navigate(bookPath)}
+                  className="px-5 py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg"
+                >
+                  Book Bus
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
 
-    // Payment warning state
-    if (student.paymentStatus !== "Active") {
+    if (paymentStatus === "Pending") {
       return (
         <div className="flex items-center justify-center min-h-80">
           <div className="w-full max-w-md">
@@ -34,11 +122,19 @@ export default function SeniorBusPass({ student }) {
                 </div>
                 <h3 className="text-xl font-semibold text-amber-900 mb-2">Payment Required</h3>
                 <p className="text-sm text-amber-800 mb-1">
-                  Complete your payment to activate your bus pass
+                  Your seat is booked. Complete payment to activate your bus pass.
                 </p>
                 <p className="text-xs text-amber-700 font-mono mt-3">
-                  Current Status: <span className="font-semibold">{student.paymentStatus}</span>
+                  Current Status: <span className="font-semibold">{paymentStatus}</span>
                 </p>
+                {payError && <p className="text-sm text-red-600 mt-3">{payError}</p>}
+                <button
+                  onClick={handlePayNow}
+                  disabled={paying}
+                  className="mt-5 px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg disabled:opacity-60"
+                >
+                  {paying ? "Processing..." : "Pay Now"}
+                </button>
               </div>
             </div>
           </div>
@@ -46,7 +142,16 @@ export default function SeniorBusPass({ student }) {
       );
     }
 
-    const { name, rollNo, busNo, route, paymentStatus } = student;
+    if (paymentStatus !== "Active") {
+      return (
+        <div className="flex items-center justify-center min-h-80">
+          <div className="w-full max-w-md bg-gray-50 border border-gray-200 rounded-2xl p-8 text-center">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Bus Pass Unavailable</h3>
+            <p className="text-sm text-gray-700">Current status: {paymentStatus}</p>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="flex flex-col items-center py-12 px-4">
@@ -113,6 +218,15 @@ export default function SeniorBusPass({ student }) {
                   </p>
                   <p className="text-sm font-semibold text-gray-900">
                     {busNo}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-xs uppercase tracking-wider font-semibold text-gray-400 mb-1">
+                    Seat Number
+                  </p>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {seatNo}
                   </p>
                 </div>
 

@@ -15,6 +15,35 @@ export default function JuniorDashboard() {
   const location = useLocation();
 
   useEffect(() => {
+    async function refreshStudentStatus() {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      try {
+        const res = await fetch("/api/student/my-status", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        const data = await res.json();
+        if (!res.ok) return;
+
+        setStudent((prev) => ({
+          ...(prev || {}),
+          ...data,
+          hasBookedBus: Boolean(data.bus_no),
+          hasPaidFees: data.payment_status === "Active",
+        }));
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    refreshStudentStatus();
+  }, [setStudent]);
+
+  useEffect(() => {
     // sync local view state with AuthContext student
     setStudentState(student || null);
   }, [student]);

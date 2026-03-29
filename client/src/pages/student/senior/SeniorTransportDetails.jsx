@@ -1,19 +1,102 @@
-import React from "react";
+import React, { useCallback, useEffect, useState } from "react";
 
-export default function SeniorTransportDetails({ student }) {
-  if (!student) return null;
+const STATUS_ENDPOINT = "/api/student/my-status";
 
-  const {
-    name,
-    rollNo,
-    facultyId,
-    route,
-    busNo,
-    seatNo,
-  } = student;
+export default function SeniorTransportDetails({ student, setStudent }) {
+  const [studentData, setStudentData] = useState(student || null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  // Mock driver contact
-  const driverContact = "9876543210";
+  const fetchStudentStatus = useCallback(async () => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      setError("Please login again to view transport details.");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+
+      const res = await fetch(STATUS_ENDPOINT, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to load transport details");
+      }
+
+      setStudentData(data);
+
+      if (setStudent) {
+        setStudent((prev) => ({
+          ...(prev || {}),
+          name: data.name,
+          roll_no: data.roll_no,
+          route: data.route,
+          bus_no: data.bus_no,
+          seat_no: data.seat_no,
+          payment_status: data.payment_status ?? prev?.payment_status,
+          driver_contact: data.driver_contact,
+          hasBookedBus: Boolean(data.bus_no),
+          hasPaidFees:
+            data.payment_status
+              ? data.payment_status === "Active"
+              : (prev?.hasPaidFees ?? Boolean(data.bus_no)),
+        }));
+      }
+    } catch (fetchError) {
+      console.error(fetchError);
+      setError(fetchError.message || "Unable to fetch transport details");
+    } finally {
+      setLoading(false);
+    }
+  }, [setStudent]);
+
+  useEffect(() => {
+    fetchStudentStatus();
+  }, [fetchStudentStatus]);
+
+  useEffect(() => {
+    const onStatusRefresh = () => fetchStudentStatus();
+    window.addEventListener("student-status-refresh", onStatusRefresh);
+
+    return () => {
+      window.removeEventListener("student-status-refresh", onStatusRefresh);
+    };
+  }, [fetchStudentStatus]);
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-xl shadow-md p-6">
+        <p className="text-gray-600">Loading transport details...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-white rounded-xl shadow-md p-6">
+        <p className="text-red-600 font-medium">{error}</p>
+      </div>
+    );
+  }
+
+  if (!studentData) {
+    return (
+      <div className="bg-white rounded-xl shadow-md p-6">
+        <p className="text-gray-600">No transport details found.</p>
+      </div>
+    );
+  }
+
+  const { name, roll_no, route, bus_no, seat_no, driver_contact } = studentData;
 
   return (
     <div className="space-y-8">
@@ -34,14 +117,14 @@ export default function SeniorTransportDetails({ student }) {
 
             <div>
               <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">
-                {rollNo ? "Roll Number" : "Faculty ID"}
+                Roll Number
               </p>
-              <p className="text-2xl font-bold text-gray-800">{rollNo || facultyId}</p>
+              <p className="text-2xl font-bold text-gray-800">{roll_no || "-"}</p>
             </div>
 
             <div>
               <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Bus Number</p>
-              <p className="text-lg font-bold text-green-700">{busNo}</p>
+              <p className="text-lg font-bold text-green-700">{bus_no || "Not assigned"}</p>
             </div>
           </div>
 
@@ -49,19 +132,19 @@ export default function SeniorTransportDetails({ student }) {
           <div className="space-y-6">
             <div>
               <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Route</p>
-              <p className="text-lg font-semibold text-gray-800">{route}</p>
+              <p className="text-lg font-semibold text-gray-800">{route || "Not selected"}</p>
             </div>
 
             <div>
               <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Seat Number</p>
               <div className="inline-block px-4 py-2 bg-green-600 text-white rounded-lg font-bold text-lg">
-                {seatNo}
+                {seat_no || "-"}
               </div>
             </div>
 
             <div>
               <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Driver Contact</p>
-              <p className="text-lg font-mono text-gray-800">{driverContact}</p>
+              <p className="text-lg font-mono text-gray-800">{driver_contact || "Not available"}</p>
             </div>
           </div>
         </div>

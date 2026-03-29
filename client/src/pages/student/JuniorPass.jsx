@@ -3,7 +3,7 @@ import SeniorBusPass from "./senior/SeniorBusPass";
 import { useAuth } from "../../context/AuthContext";
 
 export default function JuniorPass() {
-  const { student } = useAuth();
+  const { student, setStudent } = useAuth();
 
   if (!student) {
     return (
@@ -14,5 +14,5 @@ export default function JuniorPass() {
     );
   }
 
-  return <SeniorBusPass student={student} />;
+  return <SeniorBusPass student={student} setStudent={setStudent} />;
 }

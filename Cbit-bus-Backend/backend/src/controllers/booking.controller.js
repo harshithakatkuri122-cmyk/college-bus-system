@@ -2,63 +2,121 @@ const db = require("../config/db");
 
 exports.bookSeat = async (req, res) => {
   let connection;
+
   try {
     const userId = req.user.id;
+    const { bus_id, seat_no } = req.body;
+
     connection = await db.getConnection();
     await connection.beginTransaction();
 
-    // 1. Fetch Student & check Payment
+    // 1. Check if student already has a seat
     const [students] = await connection.execute(
-      "SELECT route, payment_status, bus_no FROM students WHERE user_id = ?",
+      "SELECT seat_no, route FROM students WHERE user_id = ? FOR UPDATE",
       [userId]
     );
 
-    if (students.length === 0) return res.status(404).json({ message: "Student not found" });
-
-    const student = students[0];
-
-    if (student.bus_no) return res.status(400).json({ message: "You already have a seat!" });
-    if (student.payment_status !== "Active") return res.status(403).json({ message: "Please pay first!" });
-
-    // 2. Find THE FIRST available seat on the student's route
-    const [available] = await connection.execute(
-      `SELECT s.id AS seat_id, s.seat_no, b.bus_no
-       FROM seats s
-       JOIN buses b ON s.bus_id = b.id
-       WHERE b.route_no = ? AND s.is_booked = 0
-       ORDER BY s.id ASC
-       LIMIT 1 FOR UPDATE`,
-      [student.route]
-    );
-
-    if (available.length === 0) return res.status(400).json({ message: "Bus is full!" });
-
-    const { seat_id, seat_no, bus_no } = available[0];
-
-    // 3. Perform a guarded update so concurrent requests cannot double-book.
-    const seatResult = await connection.execute(
-      "UPDATE seats SET is_booked = 1 WHERE id = ? AND is_booked = 0",
-      [seat_id]
-    );
-
-    if (seatResult[0].affectedRows === 0) {
+    if (students.length === 0) {
       await connection.rollback();
-      return res.status(409).json({ message: "Seat already taken. Please try again." });
+      return res.status(404).json({ message: "Student not found" });
     }
 
-    const [studentResult] = await connection.execute(
-      "UPDATE students SET bus_no = ?, seat_no = ? WHERE user_id = ?",
-      [bus_no, seat_no, userId]
+    if (students[0].seat_no !== null) {
+      await connection.rollback();
+      return res.status(400).json({ message: "You already have a seat" });
+    }
+
+    let selectedBusId = bus_id;
+    let selectedSeatNo = seat_no;
+    let bus_no = null;
+
+    if (!selectedBusId || selectedSeatNo === undefined || selectedSeatNo === null || selectedSeatNo === "") {
+      // Backward-compatible path: auto assign first available seat by student's selected route.
+      const [available] = await connection.execute(
+        `SELECT s.id, s.seat_no, s.bus_id, b.bus_no
+         FROM seats s
+         INNER JOIN buses b ON b.id = s.bus_id
+         WHERE b.route_no = ? AND s.is_booked = 0
+         ORDER BY s.id ASC
+         LIMIT 1
+         FOR UPDATE`,
+        [students[0].route]
+      );
+
+      if (available.length === 0) {
+        await connection.rollback();
+        return res.status(409).json({ message: "No available seats for your route" });
+      }
+
+      selectedBusId = available[0].bus_id;
+      selectedSeatNo = available[0].seat_no;
+      bus_no = available[0].bus_no;
+    }
+
+    // 2. Check if requested seat is available
+    const [seatRows] = await connection.execute(
+      `SELECT id
+       FROM seats
+       WHERE bus_id = ? AND seat_no = ? AND is_booked = 0
+       LIMIT 1
+       FOR UPDATE`,
+      [selectedBusId, selectedSeatNo]
     );
+
+    if (seatRows.length === 0) {
+      await connection.rollback();
+      return res.status(409).json({ message: "Seat already booked" });
+    }
+
+    // Resolve bus_no from buses table so student row is always consistent.
+    if (!bus_no) {
+      const [busRows] = await connection.execute(
+        "SELECT bus_no FROM buses WHERE id = ? LIMIT 1",
+        [selectedBusId]
+      );
+
+      if (busRows.length === 0) {
+        await connection.rollback();
+        return res.status(404).json({ message: "Bus not found" });
+      }
+
+      bus_no = busRows[0].bus_no;
+    }
+
+    // 3. Atomically mark seat as booked
+    const [seatUpdateResult] = await connection.execute(
+      `UPDATE seats
+       SET is_booked = 1
+       WHERE bus_id = ? AND seat_no = ? AND is_booked = 0`,
+      [selectedBusId, selectedSeatNo]
+    );
+
+    if (seatUpdateResult.affectedRows === 0) {
+      await connection.rollback();
+      return res.status(409).json({ message: "Seat already booked" });
+    }
+
+    // 4. Update student assignment and mark payment as pending until pay API succeeds
+    const [studentResult] = await connection.execute(
+      `UPDATE students
+       SET bus_no = ?, seat_no = ?, payment_status = 'Pending'
+       WHERE user_id = ?`,
+      [bus_no, selectedSeatNo, userId]
+    );
+
     if (studentResult.affectedRows === 0) {
       await connection.rollback();
-      return res.status(404).json({ message: "Student row not matched for this token user_id" });
+      return res.status(404).json({ message: "Student update failed" });
     }
 
     await connection.commit();
 
-    return res.json({ message: "Success!", bus_no, seat_no });
-
+    return res.json({
+      message: "Seat booked. Payment pending",
+      bus_no,
+      seat_no: selectedSeatNo,
+      payment_status: "Pending",
+    });
   } catch (error) {
     if (connection) {
       try {
@@ -68,8 +126,10 @@ exports.bookSeat = async (req, res) => {
       }
     }
     console.error("DATABASE ERROR:", error);
-    res.status(500).json({ message: "Internal Error" });
+    return res.status(500).json({ message: "Internal Error" });
   } finally {
-    if (connection) connection.release();
+    if (connection) {
+      connection.release();
+    }
   }
 };
