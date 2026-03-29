@@ -4,6 +4,7 @@ const morgan = require("morgan");
 
 const authRoutes = require("./routes/auth.routes");
 const studentRoutes = require("./routes/student.routes");
+const catalogRoutes = require("./routes/catalog.routes");
 
 const app = express();
 
@@ -13,6 +14,7 @@ app.use(morgan("dev"));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/student", studentRoutes);
+app.use("/api", catalogRoutes);
 
 app.get("/", (req, res) => {
   res.status(200).json({

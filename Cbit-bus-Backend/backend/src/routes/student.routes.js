@@ -6,11 +6,14 @@ const { authorizeRoles } = require("../middleware/role.middleware");
 
 const {
   getRoutes,
+  getSeatsByRoute,
+  getRoutesByType,
+  getSeatsByRouteNo,
   selectRoute,
   getMyStatus,
   payForBus,
 } = require("../controllers/student.controller");
-const { bookSeat } = require("../controllers/booking.controller");
+const { bookSeat, bookSeatByRoute } = require("../controllers/booking.controller");
 
 router.get("/test", (req, res) => {
   res.send("Student route working");
@@ -22,6 +25,13 @@ router.get(
   authMiddleware,
   authorizeRoles("student"),
   getRoutes
+);
+
+router.get(
+  "/routes/:type",
+  authMiddleware,
+  authorizeRoles("student"),
+  getRoutesByType
 );
 
 // Select route
@@ -38,6 +48,27 @@ router.post(
   authMiddleware,
   authorizeRoles("student"),
   bookSeat
+);
+
+router.post(
+  "/book",
+  authMiddleware,
+  authorizeRoles("student"),
+  bookSeatByRoute
+);
+
+router.get(
+  "/seats-by-route/:routeNo",
+  authMiddleware,
+  authorizeRoles("student"),
+  getSeatsByRoute
+);
+
+router.get(
+  "/seats/:routeNo",
+  authMiddleware,
+  authorizeRoles("student"),
+  getSeatsByRouteNo
 );
 
 router.get(

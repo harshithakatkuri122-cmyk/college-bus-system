@@ -1,38 +1,55 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import SeatLayout from "../../components/SeatLayout";
 import { useAuth } from "../../context/AuthContext";
 
-const BOOK_SEAT_ENDPOINT = "/api/student/book-seat";
-const STATUS_ENDPOINT = "/api/student/my-status";
-
 export default function BookBus() {
+  const [selectedRoute, setSelectedRoute] = useState(null);
   const [selectedSeat, setSelectedSeat] = useState(null);
-  const [selectedRoute, setSelectedRoute] = useState("Route A");
-  const booked = [3, 5, 12, 15]; // mock data
-  const navigate = useNavigate();
-  const { student: ctxStudent, setStudent } = useAuth();
-  const [studentData, setStudentData] = useState(null);
+  const [routes, setRoutes] = useState([]);
+  const [seats, setSeats] = useState([]);
+  const [restrictedSeats, setRestrictedSeats] = useState(new Set());
+  const [rollNo, setRollNo] = useState("");
+  const [hasExistingBooking, setHasExistingBooking] = useState(false);
+  const [loadingRoutes, setLoadingRoutes] = useState(false);
+  const [loadingSeats, setLoadingSeats] = useState(false);
+  const [bookingLoading, setBookingLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState(true);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [bookingError, setBookingError] = useState("");
+  const [toast, setToast] = useState(null);
+  const navigate = useNavigate();
+  const { student, setStudent } = useAuth();
 
-  async function fetchStudentStatus() {
+  function formatRouteLabel(route) {
+    const via = route?.via ? ` (${route.via})` : "";
+    return `${route.route_no} - ${route.route_name}${via}`;
+  }
+
+  const authHeaders = useCallback((extra = {}) => {
     const token = localStorage.getItem("token");
+    return {
+      ...extra,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+  }, []);
 
-    if (!token) {
+  function showToast(text, type = "error") {
+    setToast({ text, type });
+  }
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  const fetchStudentStatus = useCallback(async () => {
+    if (!localStorage.getItem("token")) {
       navigate("/login");
       return;
     }
 
     try {
       setStatusLoading(true);
-      const res = await fetch(STATUS_ENDPOINT, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const res = await fetch("/api/student/my-status", { headers: authHeaders() });
 
       const data = await res.json();
 
@@ -40,67 +57,161 @@ export default function BookBus() {
         throw new Error(data.message || "Failed to fetch student status");
       }
 
-      setStudentData(data);
+      setRollNo(data.roll_no || student?.roll_no || "");
 
-      if (data.bus_no && data.seat_no) {
-        setStudent((prev) => ({
-          ...(prev || {}),
-          ...data,
-          hasBookedBus: true,
-          hasPaidFees: data.payment_status === "Active",
-        }));
-        navigate("/student/junior/details", { replace: true });
+      const alreadyBooked = Boolean(data.booked ?? data.bus_no);
+      setHasExistingBooking(alreadyBooked);
+
+      setStudent((prev) => ({
+        ...(prev || {}),
+        ...data,
+        hasBookedBus: alreadyBooked,
+        hasPaidFees: data.payment_status === "Active",
+      }));
+
+      if (alreadyBooked) {
+        showToast("You already have a booking.", "error");
       }
     } catch (error) {
       console.error(error);
-      setBookingError(error.message || "Unable to load your booking status");
+      showToast(error.message || "Unable to load booking status");
     } finally {
       setStatusLoading(false);
     }
-  }
+  }, [authHeaders, navigate, setStudent, student?.roll_no]);
 
-  useEffect(() => {
-    fetchStudentStatus();
-  }, []);
+  const fetchRoutes = useCallback(async (studentType) => {
+    try {
+      setLoadingRoutes(true);
+      const endpoint = studentType ? `/api/student/routes/${studentType}` : "/api/student/routes";
+      const res = await fetch(endpoint, { headers: authHeaders() });
+      const data = await res.json();
 
-  async function handleConfirmBooking() {
-    const token = localStorage.getItem("token");
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to load routes");
+      }
 
-    if (studentData?.bus_no) {
-      alert("You already have a seat");
-      navigate("/student/junior/details", { replace: true });
+      setRoutes(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error(error);
+      showToast(error.message || "Unable to load routes");
+    } finally {
+      setLoadingRoutes(false);
+    }
+  }, [authHeaders]);
+
+  const handleRouteChange = useCallback(async (routeNo) => {
+    if (!routeNo) {
+      setSelectedRoute(null);
+      setSelectedSeat(null);
+      setSeats([]);
+      setRestrictedSeats(new Set());
       return;
     }
 
-    if (!token) {
-      setBookingError("Please login again to continue.");
+    setSelectedRoute(routeNo);
+    setSelectedSeat(null);
+    setSeats([]);
+    setRestrictedSeats(new Set());
+
+    try {
+      setLoadingSeats(true);
+      const res = await fetch(`/api/student/seats/${routeNo}`, { headers: authHeaders() });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to load seats");
+      }
+
+      const seatRows = Array.isArray(data?.seats) ? data.seats : [];
+      const apiRestricted = Array.isArray(data?.restrictedSeats) ? data.restrictedSeats : [];
+
+      const seatMap = new Map(
+        seatRows.map((seat) => [Number(seat.seat_no), Number(seat.is_booked) === 1])
+      );
+
+      const fullGrid = Array.from({ length: 40 }, (_, index) => {
+        const seatNo = index + 1;
+        return {
+          seat_no: seatNo,
+          is_booked: seatMap.get(seatNo) ? 1 : 0,
+        };
+      });
+
+      setSeats(fullGrid);
+      setRestrictedSeats(new Set(apiRestricted.map((seat) => Number(seat))));
+    } catch (error) {
+      console.error(error);
+      showToast(error.message || "Unable to load seats");
+    } finally {
+      setLoadingSeats(false);
+    }
+  }, [authHeaders]);
+
+  useEffect(() => {
+    const studentType = Number(student?.year) === 1 ? "junior" : Number(student?.year) >= 2 ? "senior" : "";
+    fetchStudentStatus().then(() => fetchRoutes(studentType));
+  }, [fetchRoutes, fetchStudentStatus, student?.year]);
+
+  async function handleConfirmBooking() {
+    if (hasExistingBooking) {
+      showToast("You already have a booking.");
+      return;
+    }
+
+    if (!rollNo) {
+      showToast("roll_no not found for this account");
+      return;
+    }
+
+    if (!selectedRoute || !selectedSeat) {
+      showToast("Select route and seat before booking");
       return;
     }
 
     try {
-      setIsSubmitting(true);
-      setBookingError("");
+      setBookingLoading(true);
 
-      const bookRes = await fetch(BOOK_SEAT_ENDPOINT, {
+      const bookRes = await fetch("/api/student/book", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          roll_no: rollNo,
+          route_no: Number(selectedRoute),
+          seat_no: Number(selectedSeat),
+        }),
       });
 
       const bookData = await bookRes.json();
 
       if (!bookRes.ok) {
+        if (bookRes.status === 400) {
+          const message = bookData.message || "Seat already booked";
+          showToast(message);
+
+          if (message === "Adjacent seat restricted due to gender rule" && selectedSeat) {
+            alert("Adjacent seat restricted due to gender rule");
+            setRestrictedSeats((prev) => {
+              const next = new Set(prev);
+              next.add(Number(selectedSeat));
+              return next;
+            });
+            setSelectedSeat(null);
+            return;
+          }
+
+          setHasExistingBooking(bookData.message === "Student already booked");
+          await handleRouteChange(selectedRoute);
+          return;
+        }
+        if (bookRes.status === 404) {
+          showToast(bookData.message || "Route not found");
+          return;
+        }
         throw new Error(bookData.message || "Booking failed");
       }
 
-      const statusRes = await fetch(STATUS_ENDPOINT, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
+      const statusRes = await fetch("/api/student/my-status", { headers: authHeaders() });
       const statusData = await statusRes.json();
 
       if (!statusRes.ok) {
@@ -109,25 +220,23 @@ export default function BookBus() {
 
       setStudent((prev) => ({
         ...(prev || {}),
-        ...(ctxStudent || {}),
         ...statusData,
-        hasBookedBus: Boolean(statusData.bus_no),
+        hasBookedBus: Boolean(statusData.booked ?? statusData.bus_no),
         hasPaidFees: statusData.payment_status === "Active",
       }));
-      setStudentData(statusData);
 
-      window.dispatchEvent(new Event("student-status-refresh"));
-      setShowPaymentModal(false);
-      navigate("/student/junior/details");
+      setHasExistingBooking(true);
+
+      navigate("/student/junior/details", { replace: true });
     } catch (error) {
       console.error(error);
-      setBookingError(error.message || "Unable to complete booking");
+      showToast(error.message || "Unable to complete booking");
     } finally {
-      setIsSubmitting(false);
+      setBookingLoading(false);
     }
   }
 
-  if (statusLoading || !studentData) {
+  if (statusLoading) {
     return (
       <div className="bg-white rounded-xl shadow-md p-6">
         <p className="text-gray-600">Loading...</p>
@@ -135,107 +244,146 @@ export default function BookBus() {
     );
   }
 
-  if (studentData.bus_no && studentData.seat_no) {
-    return null;
+  function renderSeatBox(seat) {
+    const seatNo = Number(seat.seat_no);
+    const isBooked = Number(seat.is_booked) === 1;
+    const isRestricted = restrictedSeats.has(seatNo);
+    const isDisabled = isBooked || isRestricted || hasExistingBooking;
+    const isSelected = Number(selectedSeat) === seatNo;
+
+    let className = "w-11 h-11 rounded-md text-sm font-semibold border flex items-center justify-center transition ";
+    let title = `Seat ${seatNo}`;
+
+    if (isBooked) {
+      className += "bg-red-500 text-white border-red-600 cursor-not-allowed";
+      title += " (Booked)";
+    } else if (isRestricted) {
+      className += "bg-amber-500 text-white border-amber-600 cursor-not-allowed";
+      title += " (Restricted by adjacent gender rule)";
+    } else if (isSelected) {
+      className += "bg-blue-500 text-white border-blue-600 cursor-pointer";
+    } else {
+      className += "bg-green-500 text-white border-green-600 hover:bg-green-600 cursor-pointer";
+    }
+
+    return (
+      <button
+        key={seatNo}
+        type="button"
+        disabled={isDisabled}
+        onClick={() => !isDisabled && setSelectedSeat(seatNo)}
+        title={title}
+        className={className}
+      >
+        {seatNo}
+      </button>
+    );
+  }
+
+  const seatRows = [];
+  for (let i = 0; i < seats.length; i += 4) {
+    seatRows.push(seats.slice(i, i + 4));
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-md p-6">
-      <h2 className="text-2xl font-bold text-gray-800 mb-4">Book Bus</h2>
-      <div className="mb-4">
+    <div className="bg-white rounded-xl shadow-md p-6 space-y-6">
+      <h2 className="text-2xl font-bold text-gray-800">Book Seat</h2>
+
+      {toast && (
+        <div
+          className={`rounded-lg px-4 py-3 text-sm font-medium ${
+            toast.type === "success" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+          }`}
+        >
+          {toast.text}
+        </div>
+      )}
+
+      {hasExistingBooking && (
+        <div className="rounded-lg px-4 py-3 text-sm font-medium bg-amber-100 text-amber-800">
+          Booking is disabled because you already have a seat assigned.
+        </div>
+      )}
+
+      <div>
         <label className="block text-gray-700 mb-1">Step 1: Select Route</label>
         <select
-          value={selectedRoute}
-          onChange={(e) => setSelectedRoute(e.target.value)}
-          className="border border-gray-300 rounded p-2 w-1/2"
+          value={selectedRoute ?? ""}
+          onChange={(e) => handleRouteChange(e.target.value)}
+          disabled={loadingRoutes}
+          className="border border-gray-300 rounded p-2 w-full md:w-1/2"
         >
-          <option>Route A</option>
-          <option>Route B</option>
-          <option>Route C</option>
+          <option value="">{loadingRoutes ? "Loading routes..." : "Choose route"}</option>
+          {routes.map((route) => (
+            <option key={route.route_no} value={route.route_no}>
+              {formatRouteLabel(route)}
+            </option>
+          ))}
         </select>
       </div>
-      <div className="mb-4">
-        <h3 className="font-semibold">Step 2: Choose Seat</h3>
-        {selectedSeat && (
-          <p className="text-green-700 font-semibold">
-            Selected seat: {selectedSeat}
-          </p>
-        )}
-        <div className="my-4">
-          <SeatLayout
-            rows={10}
-            cols={4}
-            bookedSeats={booked}
-            onSelectionChange={setSelectedSeat}
-          />
-        </div>
-        <div className="flex items-center space-x-4 mt-4">
-          <span className="inline-flex items-center space-x-1">
-            <span className="w-4 h-4 bg-green-400 inline-block rounded-sm border"></span>
-            <span className="text-sm">Available</span>
-          </span>
-          <span className="inline-flex items-center space-x-1">
-            <span className="w-4 h-4 bg-red-500 inline-block rounded-sm border"></span>
-            <span className="text-sm">Booked</span>
-          </span>
-          <span className="inline-flex items-center space-x-1">
-            <span className="w-4 h-4 bg-yellow-400 inline-block rounded-sm border"></span>
-            <span className="text-sm">Selected</span>
-          </span>
-          <span className="inline-flex items-center space-x-1">
-            <span className="w-4 h-4 bg-gray-300 inline-block rounded-sm border"></span>
-            <span className="text-sm">Disabled</span>
-          </span>
-        </div>
-        <button
-          disabled={!selectedSeat}
-          onClick={() => setShowPaymentModal(true)}
-          className="mt-6 px-6 py-3 bg-green-600 text-white rounded-lg shadow hover:bg-green-700 transition disabled:opacity-50"
-        >
-          Book Selected Seat
-        </button>
 
-        {showPaymentModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center">
-            <div className="absolute inset-0 bg-black opacity-30" onClick={() => setShowPaymentModal(false)} />
-            <div className="bg-white rounded-lg shadow-lg z-10 w-full max-w-md p-6">
-              <h3 className="text-lg font-semibold mb-4">Confirm Booking</h3>
-              <p className="text-sm text-gray-600 mb-4">Confirm seat booking now. Your payment status will be set to Pending after booking.</p>
-              {bookingError && (
-                <p className="text-sm text-red-600 mb-3">{bookingError}</p>
-              )}
-              <div className="flex justify-between items-center mb-4">
-                <div>
-                  <p className="text-sm text-gray-500">Route</p>
-                  <p className="font-medium">{selectedRoute}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Seat</p>
-                  <p className="font-medium">{selectedSeat}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Amount</p>
-                  <p className="font-medium">₹500</p>
-                </div>
-              </div>
-              <div className="flex gap-3 justify-end">
-                <button
-                  onClick={() => setShowPaymentModal(false)}
-                  className="px-4 py-2 rounded-lg border"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleConfirmBooking}
-                  disabled={isSubmitting}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg disabled:opacity-60"
-                >
-                  {isSubmitting ? "Processing..." : "Confirm Booking"}
-                </button>
+      <div>
+        <h3 className="font-semibold text-gray-800 mb-2">Step 2: Seat Layout (1-40)</h3>
+
+        {loadingSeats && <p className="text-sm text-gray-600">Loading seats...</p>}
+
+        {!loadingSeats && selectedRoute && (
+          <>
+            <div className="inline-block rounded-xl border-2 border-gray-200 bg-gray-50 p-5">
+              <div className="mb-3 text-center text-xs font-semibold text-gray-500">FRONT</div>
+              <div className="space-y-2">
+                {seatRows.map((row, index) => (
+                  <div key={`row-${index}`} className="flex items-center justify-center gap-2">
+                    {renderSeatBox(row[0])}
+                    {renderSeatBox(row[1])}
+                    <div className="w-8 sm:w-10"></div>
+                    {renderSeatBox(row[2])}
+                    {renderSeatBox(row[3])}
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
+
+            <div className="flex items-center gap-4 mt-4 text-sm">
+              <span className="inline-flex items-center gap-2">
+                <span className="w-4 h-4 rounded-sm bg-green-500 border"></span>Available
+              </span>
+              <span className="inline-flex items-center gap-2">
+                <span className="w-4 h-4 rounded-sm bg-red-500 border"></span>Booked
+              </span>
+              <span className="inline-flex items-center gap-2">
+                <span className="w-4 h-4 rounded-sm bg-amber-500 border"></span>Restricted
+              </span>
+              <span className="inline-flex items-center gap-2">
+                <span className="w-4 h-4 rounded-sm bg-blue-500 border"></span>Selected
+              </span>
+            </div>
+          </>
         )}
+
+        {!loadingSeats && !selectedRoute && (
+          <p className="text-sm text-gray-500">Select route to load seats.</p>
+        )}
+      </div>
+
+      <div className="border-t pt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="text-sm text-gray-700">
+          <p>
+            Route: <span className="font-semibold">{selectedRoute || "-"}</span>
+          </p>
+          <p>
+            Seat: <span className="font-semibold">{selectedSeat || "-"}</span>
+          </p>
+        </div>
+
+        <button
+          type="button"
+          disabled={!selectedRoute || !selectedSeat || bookingLoading || hasExistingBooking}
+          onClick={handleConfirmBooking}
+          className="px-6 py-3 bg-green-600 text-white rounded-lg shadow hover:bg-green-700 transition disabled:opacity-60"
+        >
+          {bookingLoading ? "Booking..." : "Confirm Booking"}
+        </button>
       </div>
     </div>
   );

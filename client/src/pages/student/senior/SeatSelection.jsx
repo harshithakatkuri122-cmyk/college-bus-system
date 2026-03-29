@@ -1,50 +1,93 @@
 import React, { useState, useEffect } from "react";
 
-// Generate 4x10 grid (40 seats) with realistic layout
-function buildSeats() {
-  const seats = [];
-  for (let row = 1; row <= 10; row++) {
-    seats.push({ id: `${row}A`, label: `${row}A`, status: "available" });
-    seats.push({ id: `${row}B`, label: `${row}B`, status: "available" });
-    seats.push({ id: `${row}C`, label: `${row}C`, status: "available" });
-    seats.push({ id: `${row}D`, label: `${row}D`, status: "available" });
-  }
-  return seats;
-}
-
-export default function SeatSelection({ onConfirm, onCancel }) {
-  const allSeats = buildSeats();
-  const [occupied, setOccupied] = useState(new Set());
+export default function SeatSelection({ route, onConfirm, onCancel }) {
+  const [seats, setSeats] = useState([]);
+  const [restrictedSeats, setRestrictedSeats] = useState(new Set());
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [selected, setSelected] = useState(null);
 
-  // Simulate occupied seats
   useEffect(() => {
-    const occ = new Set([
-      "1A", "2B", "3C", "4A", "5D", "6B", "7A", "8C", "9B", "10D"
-    ]);
-    setOccupied(occ);
-  }, []);
+    async function loadSeats() {
+      const token = localStorage.getItem("token");
+      if (!token || !route?.route_no) {
+        setError("Route not selected.");
+        setLoading(false);
+        return;
+      }
 
-  const handleSeatClick = (seatId) => {
-    if (occupied.has(seatId)) return; // Cannot select occupied seat
-    setSelected(selected === seatId ? null : seatId); // Toggle selection
+      try {
+        setLoading(true);
+        setError("");
+        setSelected(null);
+
+        const res = await fetch(`/api/student/seats/${route.route_no}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const data = await res.json();
+        const seatsData = Array.isArray(data?.seats) ? data.seats : [];
+        const apiRestricted = Array.isArray(data?.restrictedSeats) ? data.restrictedSeats : [];
+
+        if (!res.ok) {
+          throw new Error(data.message || "Failed to load seats");
+        }
+
+        const seatMap = new Map(
+          seatsData.map((seat) => [Number(seat.seat_no), Number(seat.is_booked) === 1])
+        );
+
+        const normalized = Array.from({ length: 40 }, (_, index) => {
+          const seatNo = index + 1;
+          return {
+            seat_no: seatNo,
+            is_booked: seatMap.get(seatNo) ? 1 : 0,
+          };
+        });
+
+        setSeats(normalized);
+        setRestrictedSeats(new Set(apiRestricted.map((seatNo) => Number(seatNo))));
+      } catch (loadError) {
+        console.error(loadError);
+        setError(loadError.message || "Unable to load seats");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadSeats();
+  }, [route?.route_no]);
+
+  const handleSeatClick = (seatNo, isDisabled) => {
+    if (isDisabled) return;
+    setSelected((prev) => (prev === seatNo ? null : seatNo));
   };
 
-  // Group seats into rows for better layout
   const rows = [];
-  for (let i = 0; i < allSeats.length; i += 4) {
-    rows.push(allSeats.slice(i, i + 4));
+  for (let i = 0; i < seats.length; i += 4) {
+    rows.push(seats.slice(i, i + 4));
   }
 
-  const getSeatColor = (seatId) => {
-    if (occupied.has(seatId)) {
-      return "bg-red-400 cursor-not-allowed border-red-500"; // Occupied = Red
+  const getSeatColor = (seat) => {
+    const seatNo = Number(seat.seat_no);
+    if (Number(seat.is_booked) === 1) {
+      return "bg-red-500 cursor-not-allowed border-red-600 text-white";
     }
-    if (selected === seatId) {
-      return "bg-gray-500 text-white border-gray-600"; // Selected = Grey
+    if (restrictedSeats.has(seatNo)) {
+      return "bg-amber-500 cursor-not-allowed border-amber-600 text-white";
     }
-    return "bg-green-400 hover:bg-green-500 border-green-500 cursor-pointer"; // Available = Green
+    if (selected === seatNo) {
+      return "bg-blue-500 text-white border-blue-600";
+    }
+    return "bg-green-500 hover:bg-green-600 border-green-600 text-white cursor-pointer";
   };
+
+  function formatRouteLabel() {
+    if (!route) return "-";
+    const via = route.via ? ` (${route.via})` : "";
+    return `${route.route_no} - ${route.route_name}${via}`;
+  }
 
   return (
     <div className="bg-white rounded-2xl shadow-md p-8 border-t-4 border-emerald-500">
@@ -53,51 +96,74 @@ export default function SeatSelection({ onConfirm, onCancel }) {
         Select Your Seat
       </h2>
       <p className="text-gray-600 mb-8">
-        Choose one available seat for your bus journey
+        Choose one available seat for your route: <span className="font-semibold">{formatRouteLabel()}</span>
       </p>
 
+      {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
+      {loading && <p className="text-gray-600 mb-4">Loading seats...</p>}
+
       {/* Seat Grid */}
+      {!loading && (
       <div className="bg-gray-50 p-8 rounded-xl mb-6 border-2 border-gray-200 inline-block">
+        <div className="text-center mb-4 text-sm text-gray-600 font-semibold">
+          ↑ Front of Bus ↑
+        </div>
         <div className="space-y-2">
           {rows.map((row, rowIdx) => (
-            <div key={rowIdx} className="flex gap-2 justify-center">
-              {row.map((seat) => (
-                <button
-                  key={seat.id}
-                  onClick={() => handleSeatClick(seat.id)}
-                  disabled={occupied.has(seat.id)}
-                  className={`
-                    w-12 h-12 rounded-lg border-2 font-bold transition-all
-                    flex items-center justify-center text-sm
-                    ${getSeatColor(seat.id)}
-                  `}
-                >
-                  {seat.label}
-                </button>
-              ))}
+            <div key={rowIdx} className="flex gap-2 justify-center items-center">
+              <button
+                onClick={() => handleSeatClick(Number(row[0]?.seat_no), Number(row[0]?.is_booked) === 1 || restrictedSeats.has(Number(row[0]?.seat_no)))}
+                disabled={Number(row[0]?.is_booked) === 1 || restrictedSeats.has(Number(row[0]?.seat_no))}
+                className={`w-12 h-12 rounded-lg border-2 font-bold transition-all flex items-center justify-center text-sm ${getSeatColor(row[0])}`}
+              >
+                {row[0]?.seat_no}
+              </button>
+              <button
+                onClick={() => handleSeatClick(Number(row[1]?.seat_no), Number(row[1]?.is_booked) === 1 || restrictedSeats.has(Number(row[1]?.seat_no)))}
+                disabled={Number(row[1]?.is_booked) === 1 || restrictedSeats.has(Number(row[1]?.seat_no))}
+                className={`w-12 h-12 rounded-lg border-2 font-bold transition-all flex items-center justify-center text-sm ${getSeatColor(row[1])}`}
+              >
+                {row[1]?.seat_no}
+              </button>
+              <div className="w-8"></div>
+              <button
+                onClick={() => handleSeatClick(Number(row[2]?.seat_no), Number(row[2]?.is_booked) === 1 || restrictedSeats.has(Number(row[2]?.seat_no)))}
+                disabled={Number(row[2]?.is_booked) === 1 || restrictedSeats.has(Number(row[2]?.seat_no))}
+                className={`w-12 h-12 rounded-lg border-2 font-bold transition-all flex items-center justify-center text-sm ${getSeatColor(row[2])}`}
+              >
+                {row[2]?.seat_no}
+              </button>
+              <button
+                onClick={() => handleSeatClick(Number(row[3]?.seat_no), Number(row[3]?.is_booked) === 1 || restrictedSeats.has(Number(row[3]?.seat_no)))}
+                disabled={Number(row[3]?.is_booked) === 1 || restrictedSeats.has(Number(row[3]?.seat_no))}
+                className={`w-12 h-12 rounded-lg border-2 font-bold transition-all flex items-center justify-center text-sm ${getSeatColor(row[3])}`}
+              >
+                {row[3]?.seat_no}
+              </button>
             </div>
           ))}
         </div>
 
-        {/* Front of bus indicator */}
-        <div className="text-center mt-6 text-sm text-gray-600 font-semibold">
-          ↑ Front of Bus ↑
-        </div>
       </div>
+      )}
 
       {/* Legend */}
       <div className="mb-6 flex flex-wrap gap-6">
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 bg-green-400 rounded border-2 border-green-500"></div>
+          <div className="w-6 h-6 bg-green-500 rounded border-2 border-green-600"></div>
           <span className="text-sm text-gray-700">Available</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 bg-gray-500 rounded border-2 border-gray-600"></div>
-          <span className="text-sm text-gray-700">Selected</span>
+          <div className="w-6 h-6 bg-red-500 rounded border-2 border-red-600"></div>
+          <span className="text-sm text-gray-700">Booked</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 bg-red-400 rounded border-2 border-red-500"></div>
-          <span className="text-sm text-gray-700">Booked</span>
+          <div className="w-6 h-6 bg-amber-500 rounded border-2 border-amber-600"></div>
+          <span className="text-sm text-gray-700">Restricted</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 bg-blue-500 rounded border-2 border-blue-600"></div>
+          <span className="text-sm text-gray-700">Selected</span>
         </div>
       </div>
 
@@ -114,7 +180,7 @@ export default function SeatSelection({ onConfirm, onCancel }) {
       <div className="flex gap-3">
         <button
           onClick={() => selected && onConfirm(selected)}
-          disabled={!selected}
+          disabled={!selected || loading}
           className="flex-1 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition font-semibold"
         >
           <i className="fas fa-check mr-2"></i>

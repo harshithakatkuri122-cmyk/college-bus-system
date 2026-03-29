@@ -16,12 +16,12 @@ export default function SeniorChangeBus({ student, setStudent }) {
   // Step 2: Seat selected
   const handleSeatSelected = (seat) => {
     setSelectedSeat(seat);
-    // Immediately update student (NO payment required for mid-year change)
+    // Keep local context consistent after route/seat selection.
     setStudent((prev) => ({
       ...prev,
-      route: selectedRoute,
-      busNo: `Bus ${Math.floor(Math.random() * 20) + 1}`,
-      seatNo: seat,
+      route: selectedRoute?.route_no,
+      bus_no: selectedRoute?.route_no,
+      seat_no: seat,
     }));
     setStep("complete");
   };
@@ -37,6 +37,7 @@ export default function SeniorChangeBus({ student, setStudent }) {
   if (step === "selectRoute") {
     return (
       <RouteSelection
+        student={student}
         onSelect={handleRouteSelected}
         onCancel={handleCancel}
       />
@@ -47,6 +48,7 @@ export default function SeniorChangeBus({ student, setStudent }) {
   if (step === "selectSeat") {
     return (
       <SeatSelection
+        route={selectedRoute}
         onConfirm={handleSeatSelected}
         onCancel={handleCancel}
       />
@@ -68,11 +70,14 @@ export default function SeniorChangeBus({ student, setStudent }) {
           <div className="text-sm space-y-1">
             <div>
               <span className="font-semibold text-gray-700">New Route:</span>{" "}
-              <span className="text-gray-600">{selectedRoute}</span>
+              <span className="text-gray-600">
+                {selectedRoute?.route_no} - {selectedRoute?.route_name}
+                {selectedRoute?.via ? ` (${selectedRoute.via})` : ""}
+              </span>
             </div>
             <div>
               <span className="font-semibold text-gray-700">New Bus:</span>{" "}
-              <span className="text-gray-600">{`Bus ${Math.floor(Math.random() * 20) + 1}`}</span>
+              <span className="text-gray-600">{selectedRoute?.route_no || "-"}</span>
             </div>
             <div>
               <span className="font-semibold text-gray-700">New Seat:</span>{" "}

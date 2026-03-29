@@ -9,8 +9,36 @@ export function AuthProvider({ children }) {
   const [student, setStudent] = useState(null);
   const [faculty, setFaculty] = useState(null);
 
+  function getToken() {
+    return localStorage.getItem("token");
+  }
+
+  function getAuthHeaders(extraHeaders = {}) {
+    const token = getToken();
+    return {
+      ...extraHeaders,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+  }
+
+  async function fetchStudentStatus() {
+    const token = getToken();
+    if (!token) return null;
+
+    const res = await fetch("/api/student/my-status", {
+      headers: getAuthHeaders(),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.message || "Failed to load student status");
+    }
+
+    return data;
+  }
+
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = getToken();
     if (!token) return;
 
     fetch("/api/auth/me", {
@@ -19,13 +47,26 @@ export function AuthProvider({ children }) {
       }
     })
       .then(res => res.json())
-      .then(data => {
+      .then(async data => {
         if (!data.user) return;
 
         setUser(data.user);
 
         if (data.user.role === "student") {
-          setStudent(data.profile);
+          let status = null;
+
+          try {
+            status = await fetchStudentStatus();
+          } catch (statusError) {
+            console.error(statusError);
+          }
+
+          setStudent({
+            ...(data.profile || {}),
+            ...(status || {}),
+            hasBookedBus: Boolean(status?.booked ?? status?.bus_no),
+            hasPaidFees: status?.payment_status === "Active",
+          });
         }
 
         if (data.user.role === "faculty") {
@@ -58,7 +99,20 @@ export function AuthProvider({ children }) {
       setUser(loggedUser);
 
       if (loggedUser.role === "student") {
-        setStudent(data.profile);
+        let status = null;
+
+        try {
+          status = await fetchStudentStatus();
+        } catch (statusError) {
+          console.error(statusError);
+        }
+
+        setStudent({
+          ...(data.profile || {}),
+          ...(status || {}),
+          hasBookedBus: Boolean(status?.booked ?? status?.bus_no),
+          hasPaidFees: status?.payment_status === "Active",
+        });
 
         if (data.profile.year === 1) {
           navigate("/student/junior");
@@ -88,6 +142,8 @@ export function AuthProvider({ children }) {
   function logout() {
     localStorage.removeItem("token");
     setUser(null);
+    setStudent(null);
+    setFaculty(null);
     navigate("/login");
   }
 

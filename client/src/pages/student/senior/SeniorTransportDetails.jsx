@@ -4,6 +4,7 @@ const STATUS_ENDPOINT = "/api/student/my-status";
 
 export default function SeniorTransportDetails({ student, setStudent }) {
   const [studentData, setStudentData] = useState(student || null);
+  const [resolvedRoute, setResolvedRoute] = useState({ route_name: "", via: "" });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -39,7 +40,10 @@ export default function SeniorTransportDetails({ student, setStudent }) {
           ...(prev || {}),
           name: data.name,
           roll_no: data.roll_no,
-          route: data.route,
+          route: data.route_no ?? data.route,
+          route_no: data.route_no,
+          route_name: data.route_name,
+          via: data.via,
           bus_no: data.bus_no,
           seat_no: data.seat_no,
           payment_status: data.payment_status ?? prev?.payment_status,
@@ -62,6 +66,30 @@ export default function SeniorTransportDetails({ student, setStudent }) {
   useEffect(() => {
     fetchStudentStatus();
   }, [fetchStudentStatus]);
+
+  useEffect(() => {
+    async function resolveRouteName() {
+      if (!studentData || studentData.route_name || !studentData.route) return;
+
+      try {
+        const res = await fetch("/api/routes");
+        const data = await res.json();
+        if (!res.ok || !Array.isArray(data)) return;
+
+        const matched = data.find((route) => Number(route.route_no) === Number(studentData.route));
+        if (matched) {
+          setResolvedRoute({
+            route_name: matched.route_name || "",
+            via: matched.via || "",
+          });
+        }
+      } catch (resolveError) {
+        console.error(resolveError);
+      }
+    }
+
+    resolveRouteName();
+  }, [studentData]);
 
   useEffect(() => {
     const onStatusRefresh = () => fetchStudentStatus();
@@ -96,7 +124,17 @@ export default function SeniorTransportDetails({ student, setStudent }) {
     );
   }
 
-  const { name, roll_no, route, bus_no, seat_no, driver_contact } = studentData;
+  const {
+    name,
+    roll_no,
+    route_name,
+    via,
+    bus_no,
+    seat_no,
+    driver_contact,
+  } = studentData;
+  const routeDisplay = route_name || resolvedRoute.route_name || "Not assigned";
+  const viaDisplay = via || resolvedRoute.via || "Not available";
 
   return (
     <div className="space-y-8">
@@ -132,7 +170,8 @@ export default function SeniorTransportDetails({ student, setStudent }) {
           <div className="space-y-6">
             <div>
               <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Route</p>
-              <p className="text-lg font-semibold text-gray-800">{route || "Not selected"}</p>
+              <p className="text-lg font-semibold text-gray-800">{routeDisplay}</p>
+              <p className="text-sm text-gray-600 mt-1">Via: {viaDisplay}</p>
             </div>
 
             <div>

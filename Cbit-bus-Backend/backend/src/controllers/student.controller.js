@@ -1,5 +1,72 @@
 const db = require("../config/db");
 
+function getAdjacentSeat(seatNo) {
+  return seatNo % 2 === 0 ? seatNo - 1 : seatNo + 1;
+}
+
+async function buildSeatResponseByRoute(routeNo) {
+  const [busRows] = await db.execute(
+    "SELECT id, bus_no FROM buses WHERE route_no = ? LIMIT 1",
+    [routeNo]
+  );
+
+  if (busRows.length === 0) {
+    return { notFound: true };
+  }
+
+  const busId = busRows[0].id;
+  const busNo = busRows[0].bus_no;
+
+  const [seats] = await db.execute(
+    `SELECT seat_no, is_booked
+     FROM seats
+     WHERE bus_id = ?
+     ORDER BY seat_no`,
+    [busId]
+  );
+
+  // Source booked seats from student assignments on this route.
+  // This is robust even when students.bus_no stores route-like values.
+  const [bookedWithGender] = await db.execute(
+    `SELECT seat_no, gender
+     FROM students
+     WHERE CAST(route AS CHAR) = CAST(? AS CHAR)
+       AND seat_no IS NOT NULL`,
+    [routeNo]
+  );
+
+  const bookedSet = new Set(
+    seats
+      .filter((seat) => Number(seat.is_booked) === 1)
+      .map((seat) => Number(seat.seat_no))
+  );
+
+  const restrictedSet = new Set();
+  for (const row of bookedWithGender) {
+    const seatNo = Number(row.seat_no);
+    if (!Number.isInteger(seatNo)) continue;
+
+    const adjacentSeat = getAdjacentSeat(seatNo);
+    if (adjacentSeat < 1 || adjacentSeat > 40) continue;
+
+    // Do not mark restricted if adjacent seat is already booked.
+    if (!bookedSet.has(adjacentSeat)) {
+      restrictedSet.add(adjacentSeat);
+    }
+  }
+
+  const restrictedSeats = Array.from(restrictedSet).sort((a, b) => a - b);
+  console.log("[Seat API] bus_id:", busId, "bookedSeats:", bookedWithGender.map((row) => Number(row.seat_no)));
+  console.log("[Seat API] restrictedSeats:", restrictedSeats);
+
+  return {
+    notFound: false,
+    seats,
+    restrictedSeats,
+    busNo,
+  };
+}
+
 exports.getRoutes = async (req, res) => {
   try {
     // req.user comes from verifyToken middleware
@@ -75,19 +142,40 @@ exports.getMyStatus = async (req, res) => {
   try {
     const userId = req.user.id;
 
+    const [identityRows] = await db.execute(
+      "SELECT roll_no FROM students WHERE user_id = ? LIMIT 1",
+      [userId]
+    );
+
+    if (identityRows.length === 0) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    const rollNo = identityRows[0].roll_no;
+
     const [rows] = await db.execute(
       `SELECT
         s.name,
         s.roll_no,
+        s.route,
+        COALESCE(r.route_name, rb.route_name) AS route_name,
+        COALESCE(r.via, rb.via) AS via,
         s.bus_no,
         s.seat_no,
-        s.route,
         s.payment_status,
+        s.gender,
         NULL AS driver_contact
       FROM students s
-      WHERE s.user_id = ?
+      LEFT JOIN routes r
+        ON CAST(s.route AS CHAR) = CAST(r.route_no AS CHAR)
+        OR s.route = r.route_name
+      LEFT JOIN buses b
+        ON CAST(s.bus_no AS CHAR) = CAST(b.bus_no AS CHAR)
+        OR CAST(s.bus_no AS CHAR) = CAST(b.route_no AS CHAR)
+      LEFT JOIN routes rb ON rb.route_no = b.route_no
+      WHERE s.roll_no = ?
       LIMIT 1`,
-      [userId]
+      [rollNo]
     );
 
     if (rows.length === 0) {
@@ -99,10 +187,13 @@ exports.getMyStatus = async (req, res) => {
     return res.json({
       name: student.name,
       roll_no: student.roll_no,
+      route: student.route,
+      route_name: student.route_name,
+      via: student.via,
       bus_no: student.bus_no,
       seat_no: student.seat_no,
-      route: student.route,
       payment_status: student.payment_status,
+      gender: student.gender,
       driver_contact: student.driver_contact,
     });
   } catch (error) {
@@ -134,6 +225,84 @@ exports.payForBus = async (req, res) => {
     );
 
     return res.json({ message: "Payment successful", payment_status: "Active" });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.getSeatsByRoute = async (req, res) => {
+  try {
+    const routeNo = Number(req.params.routeNo);
+
+    if (!Number.isInteger(routeNo)) {
+      return res.status(400).json({ message: "Invalid route number" });
+    }
+
+    const result = await buildSeatResponseByRoute(routeNo);
+
+    if (result.notFound) {
+      return res.status(404).json({ message: "Bus not found for route" });
+    }
+
+    return res.json({
+      seats: result.seats,
+      restrictedSeats: result.restrictedSeats,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.getRoutesByType = async (req, res) => {
+  try {
+    const studentType = String(req.params.type || "").toLowerCase();
+
+    if (studentType !== "junior" && studentType !== "senior") {
+      return res.status(400).json({ message: "student_type must be junior or senior" });
+    }
+
+    const [routes] = await db.execute(
+      `SELECT
+         r.route_no,
+         r.route_name,
+         r.via,
+         COALESCE(SUM(CASE WHEN s.is_booked = 0 THEN 1 ELSE 0 END), 0) AS available_seats
+       FROM routes r
+       LEFT JOIN buses b ON b.route_no = r.route_no
+       LEFT JOIN seats s ON s.bus_id = b.id
+      WHERE r.student_type = ?
+       GROUP BY r.route_no, r.route_name, r.via
+       ORDER BY r.route_no`,
+      [studentType]
+    );
+
+    return res.json(routes);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.getSeatsByRouteNo = async (req, res) => {
+  try {
+    const routeNo = Number(req.params.routeNo);
+
+    if (!Number.isInteger(routeNo)) {
+      return res.status(400).json({ message: "route_no must be a number" });
+    }
+
+    const result = await buildSeatResponseByRoute(routeNo);
+
+    if (result.notFound) {
+      return res.status(404).json({ message: "Route not found" });
+    }
+
+    return res.json({
+      seats: result.seats,
+      restrictedSeats: result.restrictedSeats,
+    });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });

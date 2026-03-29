@@ -205,8 +205,7 @@ export default function App() {
             path="/student/junior/*" 
             element={<PrivateRoute roles={["student"]} studentYear={1}><JuniorDashboard /></PrivateRoute>}
           >
-            {/* index redirects to booking to avoid duplicate widgets */}
-            <Route index element={<Navigate to="book" replace />} />
+            <Route index element={<Navigate to="details" replace />} />
             <Route path="details" element={<JuniorDetails />} />
             <Route path="book" element={<BookBus />} />
             <Route path="change" element={<JuniorChangeBus />} />

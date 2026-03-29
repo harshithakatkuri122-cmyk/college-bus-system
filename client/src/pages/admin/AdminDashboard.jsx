@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import AdminSidebar from "./AdminSidebar";
 import AdminHeader from "./AdminHeader";
 import AdminTopBar from "./AdminTopBar";
@@ -15,80 +15,16 @@ import AcademicControl from "./AcademicControl";
 export default function AdminDashboard() {
   const [activeSection, setActiveSection] = useState("overview");
 
-  // dummy / mock state
-  const [routes, setRoutes] = useState([
-    {
-      id: 1,
-      routeName: "KPHB - College",
-      busNumber: "Bus 5",
-      capacity: 50,
-      bookedSeats: 30,
-      status: "Open",
-      stops: [
-        { stopName: "KPHB", pickupTime: "08:00" },
-        { stopName: "College", pickupTime: "09:00" },
-      ],
-    },
-    {
-      id: 2,
-      routeName: "Miyapur - College",
-      busNumber: "Bus 12",
-      capacity: 40,
-      bookedSeats: 35,
-      status: "Closed",
-      stops: [
-        { stopName: "Miyapur", pickupTime: "07:30" },
-        { stopName: "College", pickupTime: "08:30" },
-      ],
-    },
-  ]);
+  const [routes, setRoutes] = useState([]);
 
-  const [students, setStudents] = useState([
-    {
-      id: 1,
-      name: "Alice Kumar",
-      rollNo: "22CSE101",
-      route: "KPHB - College",
-      busNo: "Bus 5",
-      paymentStatus: "Active",
-      contact: "9876501234",
-    },
-    {
-      id: 2,
-      name: "Bob Sharma",
-      rollNo: "22CSE102",
-      route: "Miyapur - College",
-      busNo: "Bus 12",
-      paymentStatus: "Pending",
-      contact: "9876505678",
-    },
-  ]);
+  const [students] = useState([]);
 
   const [incharges, setIncharges] = useState([
     { id: 1, name: "Mr. Rao", contact: "9000000001", route: "KPHB - College" },
     { id: 2, name: "Ms. Meena", contact: "9000000002", route: "" },
   ]);
 
-  const [transactions, setTransactions] = useState([
-    {
-      id: 1,
-      studentName: "Alice Kumar",
-      route: "KPHB - College",
-      amount: 500,
-      date: "2025-01-15",
-      status: "Success",
-      txnId: "TXN001",
-    },
-    {
-      id: 2,
-      studentName: "Bob Sharma",
-      route: "Miyapur - College",
-      amount: 500,
-      date: "2025-02-10",
-      status: "Pending",
-      txnId: "TXN002",
-    },
-  ]);
+  const [transactions] = useState([]);
 
   const [notices, setNotices] = useState([]);
   const [academicYear, setAcademicYear] = useState("2025-2026");
@@ -97,6 +33,55 @@ export default function AdminDashboard() {
   // route form helpers
   const [editingRoute, setEditingRoute] = useState(null);
   const [showRouteForm, setShowRouteForm] = useState(false);
+
+  useEffect(() => {
+    async function loadCatalog() {
+      try {
+        const [routesRes, busesRes] = await Promise.all([
+          fetch("/api/routes"),
+          fetch("/api/buses"),
+        ]);
+
+        const routesData = await routesRes.json();
+        const busesData = await busesRes.json();
+
+        if (!routesRes.ok || !busesRes.ok) {
+          throw new Error("Failed to load route catalog");
+        }
+
+        const buses = Array.isArray(busesData) ? busesData : [];
+        const mappedRoutes = (Array.isArray(routesData) ? routesData : []).map((route) => {
+          const bus = buses.find((item) => Number(item.route_no) === Number(route.route_no));
+          const viaStops = String(route.via || "")
+            .split(/->|→/)
+            .map((stop) => stop.trim())
+            .filter(Boolean)
+            .map((stopName, index) => ({
+              stopName,
+              pickupTime: `Stop ${index + 1}`,
+            }));
+
+          const capacity = Number(bus?.total_seats) || 40;
+
+          return {
+            id: Number(route.route_no),
+            routeName: route.route_name,
+            busNumber: bus?.bus_no ? String(bus.bus_no) : "Not assigned",
+            capacity,
+            bookedSeats: 0,
+            status: "Open",
+            stops: viaStops,
+          };
+        });
+
+        setRoutes(mappedRoutes);
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    loadCatalog();
+  }, []);
 
   const addOrUpdateRoute = (route) => {
     setRoutes((prev) => {
