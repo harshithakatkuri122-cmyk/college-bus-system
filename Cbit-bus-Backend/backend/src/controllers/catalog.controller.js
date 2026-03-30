@@ -34,13 +34,26 @@ exports.getRoutesByType = async (req, res) => {
       return res.status(400).json({ message: "type is required" });
     }
 
-    const [rows] = await db.execute(
-      `SELECT route_no, route_name, via, student_type
-       FROM routes
-       WHERE LOWER(student_type) = ?
-       ORDER BY route_no`,
-      [type]
-    );
+    let rows = [];
+
+    if (type === "faculty") {
+      const [result] = await db.execute(
+        `SELECT route_no, route_name, via, student_type
+         FROM routes
+         WHERE LOWER(student_type) IN ('faculty', 'staff')
+         ORDER BY route_no`
+      );
+      rows = result;
+    } else {
+      const [result] = await db.execute(
+        `SELECT route_no, route_name, via, student_type
+         FROM routes
+         WHERE LOWER(student_type) = ?
+         ORDER BY route_no`,
+        [type]
+      );
+      rows = result;
+    }
 
     return res.json(rows);
   } catch (error) {

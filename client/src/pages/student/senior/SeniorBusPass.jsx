@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { QRCodeSVG } from "qrcode.react";
+import { useAuth } from "../../../context/AuthContext";
 import logo from "../../../images/justlogo.jpg";
 
 const PAY_ENDPOINT = "/api/student/pay";
@@ -7,9 +9,10 @@ const STATUS_ENDPOINT = "/api/student/my-status";
 
 export default function SeniorBusPass({ student, setStudent }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState("");
-  const [qrCode, setQrCode] = useState(student?.qr_code || "");
+  const [qrData, setQrData] = useState(null);
   const [qrError, setQrError] = useState("");
 
   const name = student?.name || "-";
@@ -22,12 +25,13 @@ export default function SeniorBusPass({ student, setStudent }) {
 
   async function loadQrCode() {
     const token = localStorage.getItem("token");
-    if (!token) return;
+    const userId = user?.id;
+    if (!token || !userId) return;
 
     try {
       setQrError("");
 
-      let res = await fetch("/api/student/qr", {
+      let res = await fetch(`/api/student/qr/${userId}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -42,8 +46,8 @@ export default function SeniorBusPass({ student, setStudent }) {
       }
 
       const data = await res.json();
-      if (res.ok && data?.qr_code) {
-        setQrCode(data.qr_code);
+      if (res.ok && data?.roll_no) {
+        setQrData(data);
         return;
       }
 
@@ -55,25 +59,27 @@ export default function SeniorBusPass({ student, setStudent }) {
   }
 
   React.useEffect(() => {
-    if (student?.qr_code) {
-      setQrCode(student.qr_code);
-    }
-  }, [student?.qr_code]);
-
-  React.useEffect(() => {
     if (busNo && seatNo) {
       loadQrCode();
     }
-  }, [busNo, seatNo, paymentStatus]);
+  }, [busNo, seatNo, paymentStatus, user?.id]);
 
   function downloadQr() {
-    if (!qrCode) return;
+    const svg = document.getElementById("student-pass-qr");
+    if (!svg) return;
+
+    const serializer = new XMLSerializer();
+    const svgString = serializer.serializeToString(svg);
+    const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+
     const anchor = document.createElement("a");
-    anchor.href = qrCode;
-    anchor.download = `${rollNo || "bus-pass"}-qr.png`;
+    anchor.href = url;
+    anchor.download = `${rollNo || "bus-pass"}-qr.svg`;
     document.body.appendChild(anchor);
     anchor.click();
     document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
   }
 
   async function handlePayNow() {
@@ -312,8 +318,13 @@ export default function SeniorBusPass({ student, setStudent }) {
               {/* Right Column: QR Code */}
               <div className="flex flex-col items-center justify-center">
                 <div className="mb-3 h-28 w-28 bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-center justify-center">
-                  {qrCode ? (
-                    <img src={qrCode} alt="Bus pass QR" className="w-full h-full object-contain" />
+                  {qrData ? (
+                    <QRCodeSVG
+                      id="student-pass-qr"
+                      value={JSON.stringify(qrData)}
+                      size={96}
+                      includeMargin={true}
+                    />
                   ) : (
                     <div className="text-center">
                       <i className="fas fa-qrcode text-4xl text-gray-300 mb-1 block"></i>
@@ -324,7 +335,7 @@ export default function SeniorBusPass({ student, setStudent }) {
                 <p className="text-center text-xs text-gray-500 font-medium">
                   Scan for Verification
                 </p>
-                {qrCode && (
+                {qrData && (
                   <button
                     onClick={downloadQr}
                     className="mt-2 text-xs px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700"

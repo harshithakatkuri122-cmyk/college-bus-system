@@ -3,7 +3,7 @@ const db = require("../config/db");
 exports.getAllIncharges = async (req, res) => {
   try {
     const [rows] = await db.execute(
-      `SELECT bi.id, bi.user_id, bi.name, bi.designation, bi.route_id, r.route_name
+      `SELECT bi.*, r.route_name
        FROM bus_incharges bi
        LEFT JOIN routes r ON bi.route_id = r.route_no
        ORDER BY bi.name`

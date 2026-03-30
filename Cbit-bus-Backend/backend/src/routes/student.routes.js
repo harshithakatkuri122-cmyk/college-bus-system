@@ -12,6 +12,7 @@ const {
   selectRoute,
   getMyStatus,
   getMyQrCode,
+  getStudentQrByUserId,
   payForBus,
 } = require("../controllers/student.controller");
 const { bookSeat, bookSeatByRoute } = require("../controllers/booking.controller");
@@ -85,6 +86,13 @@ router.get(
   authMiddleware,
   authorizeRoles("student"),
   getMyQrCode
+);
+
+router.get(
+  "/qr/:user_id",
+  authMiddleware,
+  authorizeRoles("student", "faculty", "transport-admin"),
+  getStudentQrByUserId
 );
 
 router.get(

@@ -332,18 +332,7 @@ exports.getStudentAssignments = async (req, res) => {
   try {
     const [rows] = await db.execute(
       `SELECT
-        s.id,
-        s.user_id,
-        s.name,
-        s.roll_no,
-        s.gender,
-        s.year,
-        s.route AS route_no,
-        r.route_name,
-        r.via,
-        s.bus_no,
-        s.seat_no,
-        s.payment_status
+        s.*, r.route_name
       FROM students s
       LEFT JOIN routes r ON s.route = r.route_no
       ORDER BY s.name`
@@ -402,6 +391,51 @@ exports.getMyQrCode = async (req, res) => {
       seat_no: student.seat_no,
       route_name: student.route_name,
       qr_code,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.getStudentQrByUserId = async (req, res) => {
+  try {
+    const requestedUserId = Number(req.params.user_id);
+
+    if (!Number.isInteger(requestedUserId)) {
+      return res.status(400).json({ message: "Invalid user_id" });
+    }
+
+    if (req.user.role === "student" && Number(req.user.id) !== requestedUserId) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const [rows] = await db.execute(
+      `SELECT
+        s.name,
+        s.roll_no,
+        r.route_name,
+        s.bus_no,
+        s.seat_no
+      FROM students s
+      LEFT JOIN routes r ON s.route = r.route_no
+      WHERE s.user_id = ?
+      LIMIT 1`,
+      [requestedUserId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    const student = rows[0];
+
+    return res.json({
+      name: student.name,
+      roll_no: student.roll_no,
+      route_name: student.route_name || "Not Assigned",
+      bus_no: student.bus_no,
+      seat_no: student.seat_no,
     });
   } catch (error) {
     console.error(error);
