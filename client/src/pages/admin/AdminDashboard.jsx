@@ -17,16 +17,11 @@ export default function AdminDashboard() {
 
   const [routes, setRoutes] = useState([]);
 
-  const [students] = useState([]);
+  const [students, setStudents] = useState([]);
 
-  const [incharges, setIncharges] = useState([
-    { id: 1, name: "Mr. Rao", contact: "9000000001", route: "KPHB - College" },
-    { id: 2, name: "Ms. Meena", contact: "9000000002", route: "" },
-  ]);
+  const [incharges, setIncharges] = useState([]);
 
-  const [transactions] = useState([]);
-
-  const [notices, setNotices] = useState([]);
+  const [transactions, setTransactions] = useState([]);
   const [academicYear, setAcademicYear] = useState("2025-2026");
   const [globalBookingOpen, setGlobalBookingOpen] = useState(true);
 
@@ -34,21 +29,78 @@ export default function AdminDashboard() {
   const [editingRoute, setEditingRoute] = useState(null);
   const [showRouteForm, setShowRouteForm] = useState(false);
 
+  async function loadIncharges(token) {
+    try {
+      const res = await fetch("/api/incharges", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to load incharges");
+      }
+
+      setIncharges(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error(error);
+      setIncharges([]);
+    }
+  }
+
+  async function loadTransactions(token) {
+    try {
+      const res = await fetch("/api/transactions", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to load transactions");
+      }
+
+      const mappedTransactions = (Array.isArray(data) ? data : []).map((transaction) => ({
+        id: transaction.id,
+        studentName: transaction.student_name || transaction.student || `Student ${transaction.student_id || "-"}`,
+        route: transaction.route_name || "Not Assigned",
+        amount: Number(transaction.amount || 0),
+        date: transaction.date || (transaction.created_at ? String(transaction.created_at).slice(0, 10) : "-"),
+        status: transaction.status || "Pending",
+        txnId: transaction.txn_ref || transaction.txn_id || `TXN-${transaction.id}`,
+      }));
+
+      setTransactions(mappedTransactions);
+    } catch (error) {
+      console.error(error);
+      setTransactions([]);
+    }
+  }
+
   useEffect(() => {
-    async function loadCatalog() {
+    async function loadDashboardData() {
+      const token = localStorage.getItem("token");
+
       try {
-        const [routesRes, busesRes] = await Promise.all([
+        const [routesRes, busesRes, studentsRes] = await Promise.allSettled([
           fetch("/api/routes"),
           fetch("/api/buses"),
+          fetch("/api/students", {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          }),
         ]);
 
-        const routesData = await routesRes.json();
-        const busesData = await busesRes.json();
-
-        if (!routesRes.ok || !busesRes.ok) {
-          throw new Error("Failed to load route catalog");
-        }
-
+        const routesData =
+          routesRes.status === "fulfilled" && routesRes.value.ok
+            ? await routesRes.value.json()
+            : [];
+        const busesData =
+          busesRes.status === "fulfilled" && busesRes.value.ok
+            ? await busesRes.value.json()
+            : [];
+        const studentsData =
+          studentsRes.status === "fulfilled" && studentsRes.value.ok
+            ? await studentsRes.value.json()
+            : [];
+        const studentsList = Array.isArray(studentsData) ? studentsData : [];
         const buses = Array.isArray(busesData) ? busesData : [];
         const mappedRoutes = (Array.isArray(routesData) ? routesData : []).map((route) => {
           const bus = buses.find((item) => Number(item.route_no) === Number(route.route_no));
@@ -62,25 +114,29 @@ export default function AdminDashboard() {
             }));
 
           const capacity = Number(bus?.total_seats) || 40;
+          const bookedSeats = studentsList.filter((student) => Number(student.route_no) === Number(route.route_no) && student.seat_no).length;
 
           return {
             id: Number(route.route_no),
+            routeNo: Number(route.route_no),
             routeName: route.route_name,
             busNumber: bus?.bus_no ? String(bus.bus_no) : "Not assigned",
             capacity,
-            bookedSeats: 0,
+            bookedSeats,
             status: "Open",
             stops: viaStops,
           };
         });
 
         setRoutes(mappedRoutes);
+        setStudents(studentsList);
+        await Promise.all([loadIncharges(token), loadTransactions(token)]);
       } catch (error) {
         console.error(error);
       }
     }
 
-    loadCatalog();
+    loadDashboardData();
   }, []);
 
   const addOrUpdateRoute = (route) => {
@@ -171,7 +227,7 @@ export default function AdminDashboard() {
       case "students":
         return {
           title: "Student Management",
-          content: <StudentTable students={students} />,
+          content: <StudentTable students={students} routes={routes} />,
         };
       case "incharges":
         return {
@@ -180,7 +236,7 @@ export default function AdminDashboard() {
             <InchargeManagement
               incharges={incharges}
               routes={routes}
-              setIncharges={setIncharges}
+              refreshIncharges={() => loadIncharges(localStorage.getItem("token"))}
             />
           ),
         };
@@ -192,7 +248,7 @@ export default function AdminDashboard() {
       case "notices":
         return {
           title: "Notices",
-          content: <NoticeForm notices={notices} setNotices={setNotices} />,
+          content: <NoticeForm />,
         };
       case "academic":
         return {

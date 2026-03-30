@@ -11,9 +11,11 @@ const {
   getSeatsByRouteNo,
   selectRoute,
   getMyStatus,
+  getMyQrCode,
   payForBus,
 } = require("../controllers/student.controller");
 const { bookSeat, bookSeatByRoute } = require("../controllers/booking.controller");
+const { getNoticesByUser } = require("../controllers/notice.controller");
 
 router.get("/test", (req, res) => {
   res.send("Student route working");
@@ -76,6 +78,30 @@ router.get(
   authMiddleware,
   authorizeRoles("student"),
   getMyStatus
+);
+
+router.get(
+  "/qr",
+  authMiddleware,
+  authorizeRoles("student"),
+  getMyQrCode
+);
+
+router.get(
+  "/notices",
+  authMiddleware,
+  authorizeRoles("student"),
+  (req, res) => {
+    req.params.user_id = req.user.id;
+    return getNoticesByUser(req, res);
+  }
+);
+
+router.get(
+  "/notices/:user_id",
+  authMiddleware,
+  authorizeRoles("student"),
+  getNoticesByUser
 );
 
 router.post(

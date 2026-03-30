@@ -1,7 +1,15 @@
 const db = require("../config/db");
+const QRCode = require("qrcode");
 
 function getAdjacentSeat(seatNo) {
   return seatNo % 2 === 0 ? seatNo - 1 : seatNo + 1;
+}
+
+function normalizeGender(value) {
+  const gender = String(value || "").trim().toLowerCase();
+  if (gender.startsWith("m")) return "male";
+  if (gender.startsWith("f")) return "female";
+  return gender;
 }
 
 async function buildSeatResponseByRoute(routeNo) {
@@ -44,6 +52,11 @@ async function buildSeatResponseByRoute(routeNo) {
   const restrictedSet = new Set();
   for (const row of bookedWithGender) {
     const seatNo = Number(row.seat_no);
+    const bookedGender = normalizeGender(row.gender);
+
+    // Only female bookings restrict adjacent seat for male booking requests.
+    if (bookedGender !== "female") continue;
+
     if (!Number.isInteger(seatNo)) continue;
 
     const adjacentSeat = getAdjacentSeat(seatNo);
@@ -141,41 +154,16 @@ exports.selectRoute = async (req, res) => {
 exports.getMyStatus = async (req, res) => {
   try {
     const userId = req.user.id;
-
-    const [identityRows] = await db.execute(
-      "SELECT roll_no FROM students WHERE user_id = ? LIMIT 1",
-      [userId]
-    );
-
-    if (identityRows.length === 0) {
-      return res.status(404).json({ message: "Student not found" });
-    }
-
-    const rollNo = identityRows[0].roll_no;
-
     const [rows] = await db.execute(
       `SELECT
-        s.name,
-        s.roll_no,
-        s.route,
-        COALESCE(r.route_name, rb.route_name) AS route_name,
-        COALESCE(r.via, rb.via) AS via,
-        s.bus_no,
-        s.seat_no,
-        s.payment_status,
-        s.gender,
-        NULL AS driver_contact
+        s.*,
+        r.route_name,
+        r.via
       FROM students s
-      LEFT JOIN routes r
-        ON CAST(s.route AS CHAR) = CAST(r.route_no AS CHAR)
-        OR s.route = r.route_name
-      LEFT JOIN buses b
-        ON CAST(s.bus_no AS CHAR) = CAST(b.bus_no AS CHAR)
-        OR CAST(s.bus_no AS CHAR) = CAST(b.route_no AS CHAR)
-      LEFT JOIN routes rb ON rb.route_no = b.route_no
-      WHERE s.roll_no = ?
+      LEFT JOIN routes r ON s.route = r.route_no
+      WHERE s.user_id = ?
       LIMIT 1`,
-      [rollNo]
+      [userId]
     );
 
     if (rows.length === 0) {
@@ -187,8 +175,8 @@ exports.getMyStatus = async (req, res) => {
     return res.json({
       name: student.name,
       roll_no: student.roll_no,
-      route: student.route,
-      route_name: student.route_name,
+      route_no: student.route,
+      route_name: student.route_name || "Not Assigned",
       via: student.via,
       bus_no: student.bus_no,
       seat_no: student.seat_no,
@@ -302,6 +290,118 @@ exports.getSeatsByRouteNo = async (req, res) => {
     return res.json({
       seats: result.seats,
       restrictedSeats: result.restrictedSeats,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.getStudentDetails = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const [rows] = await db.execute(
+      `SELECT
+        s.*, 
+        r.route_name,
+        r.via
+      FROM students s
+      LEFT JOIN routes r ON s.route = r.route_no
+      WHERE s.user_id = ?
+      LIMIT 1`,
+      [userId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    const student = rows[0];
+    return res.json({
+      ...student,
+      route_no: student.route,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.getStudentAssignments = async (req, res) => {
+  try {
+    const [rows] = await db.execute(
+      `SELECT
+        s.id,
+        s.user_id,
+        s.name,
+        s.roll_no,
+        s.gender,
+        s.year,
+        s.route AS route_no,
+        r.route_name,
+        r.via,
+        s.bus_no,
+        s.seat_no,
+        s.payment_status
+      FROM students s
+      LEFT JOIN routes r ON s.route = r.route_no
+      ORDER BY s.name`
+    );
+
+    return res.json(rows);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.getMyQrCode = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const [rows] = await db.execute(
+      `SELECT
+        s.roll_no,
+        s.bus_no,
+        s.seat_no,
+        r.route_name
+      FROM students s
+      LEFT JOIN routes r ON s.route = r.route_no
+      WHERE s.user_id = ?
+      LIMIT 1`,
+      [userId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    const student = rows[0];
+
+    if (!student.bus_no || !student.seat_no) {
+      return res.status(400).json({ message: "Seat not booked yet" });
+    }
+
+    const payload = JSON.stringify({
+      roll_no: student.roll_no,
+      bus_no: student.bus_no,
+      seat_no: student.seat_no,
+      route_name: student.route_name || "",
+    });
+
+    const qr_code = await QRCode.toDataURL(payload, {
+      errorCorrectionLevel: "M",
+      margin: 1,
+      width: 280,
+    });
+
+    return res.json({
+      roll_no: student.roll_no,
+      bus_no: student.bus_no,
+      seat_no: student.seat_no,
+      route_name: student.route_name,
+      qr_code,
     });
   } catch (error) {
     console.error(error);

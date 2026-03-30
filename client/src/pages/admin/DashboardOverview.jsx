@@ -23,7 +23,7 @@ export default function DashboardOverview({ routes, students, transactions }) {
 
   const studentsPerRoute = routes.map((r) => ({
     name: r.routeName,
-    count: students.filter((s) => s.route === r.routeName).length,
+    count: students.filter((s) => (s.route_name || s.route) === r.routeName).length,
   }));
 
   const paymentStatusData = [

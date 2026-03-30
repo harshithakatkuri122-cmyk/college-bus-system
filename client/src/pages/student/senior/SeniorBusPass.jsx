@@ -9,14 +9,72 @@ export default function SeniorBusPass({ student, setStudent }) {
   const navigate = useNavigate();
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState("");
+  const [qrCode, setQrCode] = useState(student?.qr_code || "");
+  const [qrError, setQrError] = useState("");
 
   const name = student?.name || "-";
   const rollNo = student?.roll_no || student?.rollNo || "-";
   const busNo = student?.bus_no || student?.busNo;
   const seatNo = student?.seat_no || student?.seatNo;
-  const route = student?.route || "-";
+  const route = student?.route_name || "Not Assigned";
   const paymentStatus = student?.payment_status || student?.paymentStatus || "Inactive";
   const bookPath = Number(student?.year) === 1 ? "/student/junior/book" : "/student/senior";
+
+  async function loadQrCode() {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+
+    try {
+      setQrError("");
+
+      let res = await fetch("/api/student/qr", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (res.status === 404) {
+        res = await fetch("/api/student/my-qr", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+      }
+
+      const data = await res.json();
+      if (res.ok && data?.qr_code) {
+        setQrCode(data.qr_code);
+        return;
+      }
+
+      throw new Error(data.message || "QR generation failed");
+    } catch (error) {
+      console.error(error);
+      setQrError(error.message || "Unable to load QR code");
+    }
+  }
+
+  React.useEffect(() => {
+    if (student?.qr_code) {
+      setQrCode(student.qr_code);
+    }
+  }, [student?.qr_code]);
+
+  React.useEffect(() => {
+    if (busNo && seatNo) {
+      loadQrCode();
+    }
+  }, [busNo, seatNo, paymentStatus]);
+
+  function downloadQr() {
+    if (!qrCode) return;
+    const anchor = document.createElement("a");
+    anchor.href = qrCode;
+    anchor.download = `${rollNo || "bus-pass"}-qr.png`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+  }
 
   async function handlePayNow() {
     const token = localStorage.getItem("token");
@@ -254,14 +312,27 @@ export default function SeniorBusPass({ student, setStudent }) {
               {/* Right Column: QR Code */}
               <div className="flex flex-col items-center justify-center">
                 <div className="mb-3 h-28 w-28 bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-center justify-center">
-                  <div className="text-center">
-                    <i className="fas fa-qrcode text-4xl text-gray-300 mb-1 block"></i>
-                    <p className="text-[11px] text-gray-400 font-medium">QR Code</p>
-                  </div>
+                  {qrCode ? (
+                    <img src={qrCode} alt="Bus pass QR" className="w-full h-full object-contain" />
+                  ) : (
+                    <div className="text-center">
+                      <i className="fas fa-qrcode text-4xl text-gray-300 mb-1 block"></i>
+                      <p className="text-[11px] text-gray-400 font-medium">QR Code</p>
+                    </div>
+                  )}
                 </div>
                 <p className="text-center text-xs text-gray-500 font-medium">
                   Scan for Verification
                 </p>
+                {qrCode && (
+                  <button
+                    onClick={downloadQr}
+                    className="mt-2 text-xs px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                  >
+                    Download QR
+                  </button>
+                )}
+                {qrError && <p className="mt-2 text-[11px] text-red-600 text-center">{qrError}</p>}
               </div>
             </div>
 

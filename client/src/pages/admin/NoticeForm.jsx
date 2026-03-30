@@ -1,32 +1,115 @@
 import React, { useState } from "react";
 import Badge from "../../components/Badge";
+import { useAuth } from "../../context/AuthContext";
 
-export default function NoticeForm({ notices, setNotices }) {
+export default function NoticeForm() {
+  const { user } = useAuth();
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [audience, setAudience] = useState("All");
   const [route, setRoute] = useState("");
+  const [notices, setNotices] = useState([]);
+  const [routes, setRoutes] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSend = () => {
+  React.useEffect(() => {
+    async function loadRoutes() {
+      try {
+        const res = await fetch("/api/routes");
+        const data = await res.json();
+        if (!res.ok) return;
+        setRoutes(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    loadRoutes();
+  }, []);
+
+  const handleSend = async () => {
     if (!title || !message) {
       alert("Please fill in all fields");
       return;
     }
-    setNotices((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        title,
-        message,
-        audience,
-        route: audience === "Route" ? route : null,
-        date: new Date().toISOString(),
-      },
-    ]);
-    setTitle("");
-    setMessage("");
-    setAudience("All");
-    setRoute("");
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("Please login again");
+      return;
+    }
+
+    let payload = {
+      title,
+      message,
+      target_type: "all",
+    };
+
+    if (audience === "Route") {
+      const routeNo = Number(route);
+      if (!Number.isInteger(routeNo) || routeNo <= 0) {
+        alert("Please select a valid route");
+        return;
+      }
+
+      payload = {
+        ...payload,
+        target_type: "route",
+        route_no: routeNo,
+      };
+    }
+
+    try {
+      setSubmitting(true);
+
+      let res = await fetch("/api/notice", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.status === 404) {
+        res = await fetch("/api/notices", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        });
+      }
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to send notice");
+      }
+
+      setNotices((prev) => [
+        {
+          id: data.notice_id,
+          title,
+          message,
+          audience,
+          route: audience === "Route" ? route : null,
+          date: new Date().toISOString(),
+          createdBy: user?.id,
+        },
+        ...prev,
+      ]);
+
+      setTitle("");
+      setMessage("");
+      setAudience("All");
+      setRoute("");
+    } catch (error) {
+      console.error(error);
+      alert(error.message || "Unable to send notice");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const deleteNotice = (id) => {
@@ -66,29 +149,33 @@ export default function NoticeForm({ notices, setNotices }) {
                 onChange={(e) => setAudience(e.target.value)}
               >
                 <option>All</option>
-                <option>Junior</option>
-                <option>Senior</option>
-                <option>Faculty</option>
                 <option>Route</option>
               </select>
             </div>
             {audience === "Route" && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Route</label>
-                <input
+                <select
                   className="w-full border rounded-lg p-2 focus:ring focus:ring-blue-200"
                   value={route}
                   onChange={(e) => setRoute(e.target.value)}
-                  placeholder="Route name"
-                />
+                >
+                  <option value="">Select route</option>
+                  {routes.map((routeItem) => (
+                    <option key={routeItem.route_no} value={routeItem.route_no}>
+                      {routeItem.route_name} ({routeItem.route_no})
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
           </div>
           <button
             onClick={handleSend}
+            disabled={submitting}
             className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"
           >
-            Send Notice
+            {submitting ? "Sending..." : "Send Notice"}
           </button>
         </div>
       </div>

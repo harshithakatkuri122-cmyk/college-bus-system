@@ -3,7 +3,6 @@ import React from "react";
 const menuItems = [
   { key: "dashboard", label: "Dashboard", icon: "fas fa-home" },
   { key: "students", label: "Students", icon: "fas fa-users" },
-  { key: "attendance", label: "Attendance", icon: "fas fa-clipboard-list" },
   { key: "notices", label: "Notices", icon: "fas fa-bell" },
 ];
 

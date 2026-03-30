@@ -24,7 +24,10 @@ router.get("/me", verifyToken, async (req, res) => {
 
     if (role === "student") {
       const [data] = await db.execute(
-        "SELECT name, year, payment_status, route, bus_no, seat_no FROM students WHERE user_id = ?",
+        `SELECT s.name, s.year, s.payment_status, s.route AS route_no, s.bus_no, s.seat_no, r.route_name, r.via
+         FROM students s
+         LEFT JOIN routes r ON s.route = r.route_no
+         WHERE s.user_id = ?`,
         [userId]
       );
       profile = data[0];

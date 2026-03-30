@@ -2,12 +2,13 @@ import cbitLogo from "./images/cbitlogo.png";
 import buses from "./images/busss.png";
 import { useState, useEffect } from "react";
 import PublicLayout from "./PublicLayout";
-import { BrowserRouter as Router, Routes, Route, Link, Navigate } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Link, Navigate, useNavigate } from "react-router-dom";
 
 // context and pages
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import LoginPage from "./pages/LoginPage";
 import BookingProcedure from "./pages/BookingProcedure";
+import RoutesPage from "./pages/RoutesPage";
 
 // dashboards
 import JuniorDashboard from "./pages/student/JuniorDashboard";
@@ -46,6 +47,12 @@ export default function App() {
   // routing handled by react-router
 
   function HomePage() {
+    const navigate = useNavigate();
+
+    function goToRoutes(type) {
+      navigate(`/routes/${type}`);
+    }
+
     return (
       <>
         {/* ================= HERO SECTION ================= */}
@@ -128,9 +135,9 @@ export default function App() {
           </div>
         </section>
 
-        {/* ======= ROUTE CARDS ======= */}
+        {/* ======= CATEGORY CARDS ======= */}
         <section id="routes" className="px-20 py-20 bg-gray-50">
-          <div className="flex flex-col md:flex-row justify-between gap-8">
+          <div className="flex flex-col md:flex-row justify-between gap-8 mb-10">
             <div className="flex-1 bg-white rounded-lg shadow-md overflow-hidden transform transition-all duration-300 hover:shadow-2xl hover:-translate-y-2">
               <div className="h-1 bg-green-600"></div>
               <div className="p-8 text-center">
@@ -139,10 +146,13 @@ export default function App() {
                 </div>
                 <h3 className="text-2xl font-bold text-gray-800 mb-3">Senior Bus Routes</h3>
                 <p className="text-gray-600 mb-6">Routes for senior students with flexible schedules</p>
-                <a href="#" className="text-green-600 font-semibold flex items-center justify-center space-x-2 hover:text-green-700 transition">
+                <button
+                  onClick={() => goToRoutes("senior")}
+                  className="text-green-600 font-semibold flex items-center justify-center space-x-2 hover:text-green-700 transition w-full"
+                >
                   <span>View Routes</span>
                   <i className="fas fa-arrow-right"></i>
-                </a>
+                </button>
               </div>
             </div>
 
@@ -154,10 +164,13 @@ export default function App() {
                 </div>
                 <h3 className="text-2xl font-bold text-gray-800 mb-3">Junior Bus Routes</h3>
                 <p className="text-gray-600 mb-6">Routes for junior students with safe transport</p>
-                <a href="#" className="text-green-600 font-semibold flex items-center justify-center space-x-2 hover:text-green-700 transition">
+                <button
+                  onClick={() => goToRoutes("junior")}
+                  className="text-green-600 font-semibold flex items-center justify-center space-x-2 hover:text-green-700 transition w-full"
+                >
                   <span>View Routes</span>
                   <i className="fas fa-arrow-right"></i>
-                </a>
+                </button>
               </div>
             </div>
 
@@ -169,13 +182,17 @@ export default function App() {
                 </div>
                 <h3 className="text-2xl font-bold text-gray-800 mb-3">Faculty Bus Routes</h3>
                 <p className="text-gray-600 mb-6">Routes for faculty and staff members</p>
-                <a href="#" className="text-green-600 font-semibold flex items-center justify-center space-x-2 hover:text-green-700 transition">
+                <button
+                  onClick={() => goToRoutes("faculty")}
+                  className="text-green-600 font-semibold flex items-center justify-center space-x-2 hover:text-green-700 transition w-full"
+                >
                   <span>View Routes</span>
                   <i className="fas fa-arrow-right"></i>
-                </a>
+                </button>
               </div>
             </div>
           </div>
+
         </section>
       </>
     );
@@ -197,6 +214,7 @@ export default function App() {
         {/* ================= MAIN ROUTING SECTION ================= */}
         <Routes>
           <Route path="/" element={<PublicLayout><HomePage /></PublicLayout>} />
+          <Route path="/routes/:type" element={<PublicLayout><RoutesPage /></PublicLayout>} />
           <Route path="/login" element={<PublicLayout><LoginPage /></PublicLayout>} />
           <Route path="/procedure" element={<PublicLayout><BookingProcedure /></PublicLayout>} />
 
@@ -287,7 +305,8 @@ export default function App() {
 
 // helper component for guarding routes
 function PrivateRoute({ children, roles, studentYear }) {
-  const { user, student } = useAuth();
+  const { user, student, authLoading } = useAuth();
+  if (authLoading) return null;
   if (!user) return <Navigate to="/login" />;
   if (roles && !roles.includes(user.role)) return <Navigate to="/" />;
 

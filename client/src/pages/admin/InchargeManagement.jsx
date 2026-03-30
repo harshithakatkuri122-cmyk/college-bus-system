@@ -1,26 +1,70 @@
 import React, { useState } from "react";
 import SearchableSelect from "../../components/SearchableSelect";
 
-export default function InchargeManagement({ incharges, routes, setIncharges }) {
+export default function InchargeManagement({ incharges, routes, refreshIncharges }) {
   const [selectedRoute, setSelectedRoute] = useState("");
   const [selectedIncharge, setSelectedIncharge] = useState(null);
 
-  const assign = () => {
+  const assign = async () => {
     if (selectedIncharge && selectedRoute) {
-      setIncharges((prev) =>
-        prev.map((i) =>
-          i.id === selectedIncharge.id
-            ? { ...i, route: selectedRoute.routeName }
-            : i
-        )
-      );
-      setSelectedRoute("");
-      setSelectedIncharge(null);
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch("/api/assign-incharge", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            route_id: selectedRoute.routeNo,
+            user_id: selectedIncharge.user_id,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.message || "Failed to assign incharge");
+        }
+
+        setSelectedRoute("");
+        setSelectedIncharge(null);
+        if (refreshIncharges) {
+          await refreshIncharges();
+        }
+      } catch (error) {
+        console.error(error);
+        alert(error.message || "Unable to assign incharge");
+      }
     }
   };
 
-  const remove = (id) => {
-    setIncharges((prev) => prev.map((i) => (i.id === id ? { ...i, route: "" } : i)));
+  const remove = async (incharge) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch("/api/assign-incharge", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          route_id: null,
+          user_id: incharge.user_id,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to unassign route");
+      }
+
+      if (refreshIncharges) {
+        await refreshIncharges();
+      }
+    } catch (error) {
+      console.error(error);
+      alert(error.message || "Unable to remove assignment");
+    }
   };
 
   return (
@@ -70,12 +114,12 @@ export default function InchargeManagement({ incharges, routes, setIncharges }) 
             {incharges.map((i) => (
               <tr key={i.id} className="border-t hover:bg-gray-50 transition">
                 <td className="px-6 py-4">{i.name}</td>
-                <td className="px-6 py-4">{i.route ? <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">{i.route}</span> : <span className="text-sm text-gray-400">Unassigned</span>}</td>
-                <td className="px-6 py-4">{i.contact || "-"}</td>
+                <td className="px-6 py-4">{i.route_name ? <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">{i.route_name}</span> : <span className="text-sm text-gray-400">Unassigned</span>}</td>
+                <td className="px-6 py-4">{i.designation || "-"}</td>
                 <td className="px-6 py-4">
-                  {i.route && (
+                  {i.route_name && (
                     <button
-                      onClick={() => remove(i.id)}
+                      onClick={() => remove(i)}
                       className="text-red-600 hover:underline"
                     >
                       Remove

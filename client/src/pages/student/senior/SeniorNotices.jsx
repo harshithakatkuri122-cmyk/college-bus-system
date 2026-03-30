@@ -1,46 +1,75 @@
 import React, { useState, useEffect } from "react";
-
-// Dummy data for notices
-const dummyNotices = [
-  {
-    id: 1,
-    title: "Bus Timing Changed",
-    message: "Bus 12 timing changed to 8:10 AM",
-    date: "12 Feb 2026",
-    sender: "Admin",
-    route: "KPHB - College",
-  },
-  {
-    id: 2,
-    title: "Route Maintenance",
-    message: "Route maintenance on LB Nagar will cause delays of 10 mins.",
-    date: "20 Jan 2026",
-    sender: "Incharge",
-    route: "LB Nagar - College",
-  },
-  {
-    id: 3,
-    title: "Festival Notice",
-    message: "No buses will run on 1st March due to Holi celebrations.",
-    date: "25 Feb 2026",
-    sender: "Admin",
-    route: null, // global notice
-  },
-];
+import { useAuth } from "../../../context/AuthContext";
 
 export default function SeniorNotices({ student }) {
+  const { user } = useAuth();
   const [notices, setNotices] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!student) return;
-    const filtered = dummyNotices.filter(
-      (n) => !n.route || n.route === student.route
-    );
-    setNotices(filtered);
-  }, [student]);
+    async function loadNotices() {
+      const token = localStorage.getItem("token");
+      const userId = user?.id || user?.user_id;
+
+      if (!token || !userId) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError("");
+
+        let res = await fetch(`/api/student/notices`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (res.status === 404) {
+          res = await fetch(`/api/notices/${userId}`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+        }
+
+        if (res.status === 404) {
+          res = await fetch(`/api/notice/${userId}`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+        }
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.message || "Failed to load notices");
+        }
+
+        setNotices(Array.isArray(data) ? data : []);
+      } catch (fetchError) {
+        console.error(fetchError);
+        setError(fetchError.message || "Unable to load notices");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadNotices();
+  }, [user?.id]);
 
   if (!student) {
     return <p className="text-center text-gray-600">Loading notices...</p>;
+  }
+
+  if (loading) {
+    return <p className="text-center text-gray-600">Loading notices...</p>;
+  }
+
+  if (error) {
+    return <p className="text-center text-red-600">{error}</p>;
   }
 
   if (notices.length === 0) {
@@ -60,12 +89,12 @@ export default function SeniorNotices({ student }) {
         >
           <div className="flex justify-between items-start">
             <h3 className="text-lg font-bold text-gray-800">{n.title}</h3>
-            <span className="text-sm text-gray-500">{n.date}</span>
+            <span className="text-sm text-gray-500">{new Date(n.created_at).toLocaleDateString()}</span>
           </div>
           <p className="mt-2 text-gray-700 leading-relaxed">{n.message}</p>
           <div className="mt-3 text-sm text-gray-500 flex flex-wrap gap-4">
-            <span>Sender: {n.sender}</span>
-            <span>{n.route ? `Route: ${n.route}` : "Global"}</span>
+            <span>Sender ID: {n.created_by}</span>
+            <span>{n.route_no ? `Route No: ${n.route_no}` : "Global"}</span>
           </div>
         </div>
       ))}

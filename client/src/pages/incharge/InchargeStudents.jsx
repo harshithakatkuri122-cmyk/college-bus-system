@@ -12,16 +12,16 @@ export default function InchargeStudents({ incharge }) {
     if (searchTerm) {
       filtered = filtered.filter(
         (student) =>
-          student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          student.collegeId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          student.contact.includes(searchTerm) ||
-          student.emergency.includes(searchTerm)
+          String(student.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+          String(student.roll_no || student.collegeId || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+          String(student.contact || "").includes(searchTerm) ||
+          String(student.emergency || "").includes(searchTerm)
       );
     }
 
     // Filter by year
     if (selectedYear) {
-      filtered = filtered.filter((student) => student.year === selectedYear);
+      filtered = filtered.filter((student) => String(student.year || "") === selectedYear.replace(" Year", ""));
     }
 
     return filtered;
@@ -115,22 +115,22 @@ export default function InchargeStudents({ incharge }) {
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center text-white font-bold text-sm">
-                        {student.name.charAt(0)}
+                        {String(student.name || "-").charAt(0)}
                       </div>
-                      <span className="font-medium text-gray-800">{student.name}</span>
+                      <span className="font-medium text-gray-800">{student.name || "-"}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-gray-700">{student.collegeId}</td>
-                  <td className="px-6 py-4 text-gray-700">{student.contact}</td>
-                  <td className="px-6 py-4 text-gray-700">{student.emergency}</td>
+                  <td className="px-6 py-4 text-gray-700">{student.roll_no || student.collegeId || "-"}</td>
+                  <td className="px-6 py-4 text-gray-700">{student.contact || "-"}</td>
+                  <td className="px-6 py-4 text-gray-700">{student.emergency || "-"}</td>
                   <td className="px-6 py-4">
                     <span className="inline-block px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
-                      {student.department}
+                      {student.department || "-"}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-center">
                     <span className="inline-block px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-medium">
-                      {student.year}
+                      {student.year ? `${student.year} Year` : "-"}
                     </span>
                   </td>
                 </tr>

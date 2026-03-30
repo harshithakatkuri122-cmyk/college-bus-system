@@ -4,7 +4,10 @@
   "type": "commonjs",
   "scripts": {
     "dev": "nodemon --exec node src/server.js",
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "migrate:notices": "node src/scripts/migrateNotices.js",
+    "migrate:admin": "node src/scripts/migrateAdminTables.js",
+    "test": "jest --runInBand"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
@@ -14,9 +17,12 @@
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.1",
-    "mysql2": "^3.18.2"
+    "mysql2": "^3.18.2",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
+    "jest": "^30.2.0",
+    "supertest": "^7.1.4",
     "nodemon": "^3.1.14"
   }
 }

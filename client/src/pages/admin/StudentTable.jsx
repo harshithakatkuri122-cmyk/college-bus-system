@@ -3,20 +3,29 @@ import Badge from "../../components/Badge";
 
 const ITEMS_PER_PAGE = 10;
 
-export default function StudentTable({ students }) {
+export default function StudentTable({ students, routes = [] }) {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [routeFilter, setRouteFilter] = useState("");
   const [paymentFilter, setPaymentFilter] = useState("");
 
   const filtered = students.filter((s) => {
-    if (search && !(`${s.name}${s.rollNo}`.toLowerCase().includes(search.toLowerCase()))) return false;
-    if (routeFilter && s.route !== routeFilter) return false;
-    if (paymentFilter && s.paymentStatus !== paymentFilter) return false;
+    const rollNo = s.roll_no || s.rollNo || "";
+    const routeName = s.route_name || "Not Assigned";
+    const paymentStatus = s.payment_status || s.paymentStatus || "";
+
+    if (search && !(`${s.name || ""}${rollNo}`.toLowerCase().includes(search.toLowerCase()))) return false;
+    if (routeFilter && routeName !== routeFilter) return false;
+    if (paymentFilter && paymentStatus !== paymentFilter) return false;
     return true;
   });
 
-  const routes = Array.from(new Set(students.map((s) => s.route)));
+  const routeOptions = Array.from(
+    new Set([
+      ...routes.map((route) => route.routeName).filter(Boolean),
+      ...students.map((student) => student.route_name || "Not Assigned").filter(Boolean),
+    ])
+  );
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const start = (page - 1) * ITEMS_PER_PAGE;
   const paged = filtered.slice(start, start + ITEMS_PER_PAGE);
@@ -42,7 +51,7 @@ export default function StudentTable({ students }) {
           className="border rounded-lg p-2 focus:ring focus:ring-blue-200"
         >
           <option value="">All routes</option>
-          {routes.map((r) => (
+          {routeOptions.map((r) => (
             <option key={r} value={r}>
               {r}
             </option>
@@ -78,15 +87,18 @@ export default function StudentTable({ students }) {
             </thead>
             <tbody>
               {paged.map((s) => (
-                <tr key={s.rollNo || s.id} className="border-t hover:bg-gray-50 transition">
+                <tr key={s.roll_no || s.rollNo || s.id} className="border-t hover:bg-gray-50 transition">
                   <td className="px-6 py-4 font-medium">{s.name}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{s.rollNo}</td>
-                  <td className="px-6 py-4 text-sm">{s.route}</td>
-                  <td className="px-6 py-4 text-sm font-mono">{s.busNo}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600">{s.roll_no || s.rollNo || "-"}</td>
+                  <td className="px-6 py-4 text-sm">{s.route_name || "Not Assigned"}</td>
+                  <td className="px-6 py-4 text-sm font-mono">{s.bus_no || s.busNo || "-"}</td>
                   <td className="px-6 py-4">
-                    <Badge text={s.paymentStatus} type={s.paymentStatus.toLowerCase()} />
+                    <Badge
+                      text={s.payment_status || s.paymentStatus || "Pending"}
+                      type={String(s.payment_status || s.paymentStatus || "pending").toLowerCase()}
+                    />
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{s.contact}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600">{s.contact || "-"}</td>
                   <td className="px-6 py-4 space-x-1">
                     <button className="px-2 py-1 text-blue-600 hover:bg-blue-50 rounded text-sm transition">
                       View

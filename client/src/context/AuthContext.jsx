@@ -8,6 +8,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [student, setStudent] = useState(null);
   const [faculty, setFaculty] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
   function getToken() {
     return localStorage.getItem("token");
@@ -39,7 +40,10 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const token = getToken();
-    if (!token) return;
+    if (!token) {
+      setAuthLoading(false);
+      return;
+    }
 
     fetch("/api/auth/me", {
       headers: {
@@ -48,7 +52,10 @@ export function AuthProvider({ children }) {
     })
       .then(res => res.json())
       .then(async data => {
-        if (!data.user) return;
+        if (!data.user) {
+          localStorage.removeItem("token");
+          return;
+        }
 
         setUser(data.user);
 
@@ -73,7 +80,11 @@ export function AuthProvider({ children }) {
           setFaculty(data.profile);
         }
       })
-      .catch(err => console.error(err));
+      .catch(err => {
+        console.error(err);
+        localStorage.removeItem("token");
+      })
+      .finally(() => setAuthLoading(false));
   }, []);
 
   async function login(college_id, password) {
@@ -148,7 +159,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, student, setStudent, faculty, setFaculty }}>
+    <AuthContext.Provider value={{ user, login, logout, student, setStudent, faculty, setFaculty, authLoading }}>
       {children}
     </AuthContext.Provider>
   );
