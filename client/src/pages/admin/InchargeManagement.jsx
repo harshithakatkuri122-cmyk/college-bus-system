@@ -5,6 +5,13 @@ export default function InchargeManagement({ incharges, routes, refreshIncharges
   const [selectedRoute, setSelectedRoute] = useState("");
   const [selectedIncharge, setSelectedIncharge] = useState(null);
 
+  const inchargeOptions = (Array.isArray(incharges) ? incharges : []).map((i) => ({
+    ...i,
+    id: i.id ?? i.user_id,
+    label: i.name,
+    value: i.user_id,
+  }));
+
   const assign = async () => {
     if (selectedIncharge && selectedRoute) {
       try {
@@ -17,7 +24,7 @@ export default function InchargeManagement({ incharges, routes, refreshIncharges
           },
           body: JSON.stringify({
             route_id: selectedRoute.routeNo,
-            user_id: selectedIncharge.user_id,
+            user_id: selectedIncharge.user_id ?? selectedIncharge.value,
           }),
         });
 
@@ -75,11 +82,11 @@ export default function InchargeManagement({ incharges, routes, refreshIncharges
           <div>
             <label className="text-sm text-gray-600">Select Incharge</label>
             <SearchableSelect
-              items={incharges}
+              items={inchargeOptions}
               placeholder="Search incharge..."
               value={selectedIncharge}
               onSelect={(v) => setSelectedIncharge(v)}
-              renderItem={(it) => `${it.name} (${it.contact || "-"})`}
+              renderItem={(it) => `${it.label || it.name} (${it.designation || "-"})`}
             />
           </div>
           <div>
@@ -112,7 +119,7 @@ export default function InchargeManagement({ incharges, routes, refreshIncharges
           </thead>
           <tbody>
             {incharges.map((i) => (
-              <tr key={i.id} className="border-t hover:bg-gray-50 transition">
+              <tr key={i.user_id ?? i.id} className="border-t hover:bg-gray-50 transition">
                 <td className="px-6 py-4">{i.name}</td>
                 <td className="px-6 py-4">{i.route_name ? <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">{i.route_name}</span> : <span className="text-sm text-gray-400">Unassigned</span>}</td>
                 <td className="px-6 py-4">{i.designation || "-"}</td>

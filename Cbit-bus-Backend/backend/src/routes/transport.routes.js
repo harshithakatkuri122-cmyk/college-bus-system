@@ -24,12 +24,7 @@ router.get(
   getStudentAssignments
 );
 
-router.get(
-  "/incharges",
-  authMiddleware,
-  authorizeRoles("transport-admin"),
-  getAllIncharges
-);
+router.get("/incharges", getAllIncharges);
 
 router.post(
   "/assign-incharge",

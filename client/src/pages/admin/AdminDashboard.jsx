@@ -40,7 +40,16 @@ export default function AdminDashboard() {
         throw new Error(data.message || "Failed to load incharges");
       }
 
-      setIncharges(Array.isArray(data) ? data : []);
+      const normalized = (Array.isArray(data) ? data : []).map((item, index) => ({
+        id: Number(item.id ?? item.user_id ?? index + 1),
+        user_id: Number(item.user_id ?? item.id ?? 0),
+        name: String(item.name || item.full_name || "").trim(),
+        designation: String(item.designation || "Bus Incharge").trim(),
+        route_id: item.route_id == null ? null : Number(item.route_id),
+        route_name: item.route_name || null,
+      }));
+
+      setIncharges(normalized);
     } catch (error) {
       console.error(error);
       setIncharges([]);

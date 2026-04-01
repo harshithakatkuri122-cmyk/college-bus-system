@@ -13,24 +13,27 @@ export default function SearchableSelect({ items, placeholder = "Search...", onS
     return () => document.removeEventListener("click", onDoc);
   }, []);
 
-  const filtered = items.filter((it) =>
-    (it.name || it.routeName || "").toLowerCase().includes(query.toLowerCase())
-  );
+  const filtered = (Array.isArray(items) ? items : []).filter((it) => {
+    const searchText = String(it.name || it.routeName || it.label || "").toLowerCase();
+    return searchText.includes(query.toLowerCase());
+  });
+
+  const valueText = value && (value.name || value.routeName || value.label);
 
   return (
     <div className="relative" ref={ref}>
       <input
         className="w-full border rounded p-2"
-        value={query || (value && (value.name || value.routeName) ) || ""}
+        value={query || valueText || ""}
         placeholder={placeholder}
         onChange={(e) => setQuery(e.target.value)}
         onFocus={() => setOpen(true)}
       />
       {open && (
         <div className="absolute z-50 left-0 right-0 bg-white border rounded mt-1 max-h-48 overflow-auto shadow-lg">
-          {filtered.map((it) => (
+          {filtered.map((it, index) => (
             <div
-              key={it.id}
+              key={it.id ?? it.value ?? index}
               className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
               onClick={() => {
                 onSelect && onSelect(it);
@@ -38,7 +41,7 @@ export default function SearchableSelect({ items, placeholder = "Search...", onS
                 setQuery("");
               }}
             >
-              {renderItem ? renderItem(it) : (it.name || it.routeName)}
+              {renderItem ? renderItem(it) : (it.name || it.routeName || it.label)}
             </div>
           ))}
           {filtered.length === 0 && <div className="p-3 text-sm text-gray-500">No results</div>}
