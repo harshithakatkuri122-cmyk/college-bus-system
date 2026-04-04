@@ -1,4 +1,5 @@
 import React from "react";
+import AssistantChat from "../../components/AssistantChat";
 
 export default function StudentDashboard({
   student,
@@ -27,6 +28,8 @@ export default function StudentDashboard({
         <div className="bg-white rounded-2xl shadow-md p-8">{children}</div>
 
       </div>
+
+      <AssistantChat />
 
     </div>
   );

@@ -1,7 +1,8 @@
 import { Link } from "react-router-dom";
 import cbitLogo from "./images/cbitlogo.png";
+import AssistantChat from "./components/AssistantChat";
 
-export default function PublicLayout({ children }) {
+export default function PublicLayout({ children, showAssistant = false }) {
   return (
     <>
       {/* TOP GREEN BAR */}
@@ -32,6 +33,8 @@ export default function PublicLayout({ children }) {
       </header>
 
       {children}
+
+      {showAssistant && <AssistantChat mode="public" />}
 
       {/* FOOTER */}
       <footer

@@ -24,6 +24,7 @@ export default function AdminDashboard() {
   const [transactions, setTransactions] = useState([]);
   const [academicYear, setAcademicYear] = useState("2025-2026");
   const [globalBookingOpen, setGlobalBookingOpen] = useState(true);
+  const [seedingTimings, setSeedingTimings] = useState(false);
 
   // route form helpers
   const [editingRoute, setEditingRoute] = useState(null);
@@ -81,6 +82,38 @@ export default function AdminDashboard() {
     } catch (error) {
       console.error(error);
       setTransactions([]);
+    }
+  }
+
+  async function seedTimings() {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("Please login again.");
+      return;
+    }
+
+    try {
+      setSeedingTimings(true);
+      const res = await fetch("/api/admin/timings/seed", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ force: false }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || "Failed to seed timings");
+      }
+
+      alert(`Timings updated. Inserted: ${data.inserted}, skipped routes: ${data.skippedRoutes}`);
+    } catch (error) {
+      console.error(error);
+      alert(error.message || "Unable to seed timings");
+    } finally {
+      setSeedingTimings(false);
     }
   }
 
@@ -270,6 +303,8 @@ export default function AdminDashboard() {
               setGlobalBookingOpen={setGlobalBookingOpen}
               routes={routes}
               toggleRouteBooking={toggleRouteBooking}
+              onSeedTimings={seedTimings}
+              seedingTimings={seedingTimings}
             />
           ),
         };

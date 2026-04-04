@@ -6,6 +6,8 @@ const authRoutes = require("./routes/auth.routes");
 const studentRoutes = require("./routes/student.routes");
 const catalogRoutes = require("./routes/catalog.routes");
 const transportRoutes = require("./routes/transport.routes");
+const assistantRoutes = require("./routes/assistant.routes");
+const adminRoutes = require("./routes/admin.routes");
 
 const app = express();
 
@@ -17,6 +19,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/student", studentRoutes);
 app.use("/api", catalogRoutes);
 app.use("/api", transportRoutes);
+app.use("/api", assistantRoutes);
+app.use("/api/admin", adminRoutes);
 
 app.get("/", (req, res) => {
   res.status(200).json({

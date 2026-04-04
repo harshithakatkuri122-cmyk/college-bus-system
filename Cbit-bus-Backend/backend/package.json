@@ -7,6 +7,8 @@
     "start": "node src/server.js",
     "migrate:notices": "node src/scripts/migrateNotices.js",
     "migrate:admin": "node src/scripts/migrateAdminTables.js",
+    "migrate:timings": "node src/scripts/migrateTimings.js",
+    "seed:timings": "node src/scripts/seedTimings.js",
     "test": "jest --runInBand"
   },
   "dependencies": {
@@ -18,11 +20,12 @@
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.1",
     "mysql2": "^3.18.2",
+    "openai": "^6.33.0",
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "jest": "^30.2.0",
-    "supertest": "^7.1.4",
-    "nodemon": "^3.1.14"
+    "nodemon": "^3.1.14",
+    "supertest": "^7.1.4"
   }
 }

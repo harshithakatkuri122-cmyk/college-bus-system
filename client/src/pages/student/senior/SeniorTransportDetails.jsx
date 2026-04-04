@@ -2,6 +2,10 @@ import React, { useCallback, useEffect, useState } from "react";
 
 const STATUS_ENDPOINT = "/api/student/my-status";
 
+function normalizeValue(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
 export default function SeniorTransportDetails({ student, setStudent }) {
   const [studentData, setStudentData] = useState(student || null);
   const [resolvedRoute, setResolvedRoute] = useState({ route_name: "", via: "" });
@@ -76,7 +80,14 @@ export default function SeniorTransportDetails({ student, setStudent }) {
         const data = await res.json();
         if (!res.ok || !Array.isArray(data)) return;
 
-        const matched = data.find((route) => Number(route.route_no) === Number(studentData.route));
+        const routeValue = normalizeValue(studentData.route);
+        const matched = data.find((route) => {
+          return (
+            normalizeValue(route.route_no) === routeValue ||
+            normalizeValue(route.id) === routeValue ||
+            normalizeValue(route.route_name) === routeValue
+          );
+        });
         if (matched) {
           setResolvedRoute({
             route_name: matched.route_name || "",

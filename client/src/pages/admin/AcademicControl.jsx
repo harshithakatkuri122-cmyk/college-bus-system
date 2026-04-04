@@ -8,6 +8,8 @@ export default function AcademicControl({
   setGlobalBookingOpen,
   routes,
   toggleRouteBooking,
+  onSeedTimings,
+  seedingTimings = false,
 }) {
   return (
     <div className="space-y-6">
@@ -31,6 +33,16 @@ export default function AcademicControl({
               }`}
             >
               {globalBookingOpen ? "✓ Bookings Open" : "✗ Bookings Closed"}
+            </button>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Timings Seed</label>
+            <button
+              onClick={onSeedTimings}
+              disabled={seedingTimings}
+              className="w-full px-4 py-2 rounded-lg text-white font-medium transition bg-slate-800 hover:bg-slate-900 disabled:opacity-60"
+            >
+              {seedingTimings ? "Seeding..." : "Seed / Refresh Timings"}
             </button>
           </div>
         </div>

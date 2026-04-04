@@ -213,10 +213,10 @@ export default function App() {
         
         {/* ================= MAIN ROUTING SECTION ================= */}
         <Routes>
-          <Route path="/" element={<PublicLayout><HomePage /></PublicLayout>} />
+          <Route path="/" element={<PublicLayout showAssistant><HomePage /></PublicLayout>} />
           <Route path="/routes/:type" element={<PublicLayout><RoutesPage /></PublicLayout>} />
           <Route path="/login" element={<PublicLayout><LoginPage /></PublicLayout>} />
-          <Route path="/procedure" element={<PublicLayout><BookingProcedure /></PublicLayout>} />
+          <Route path="/procedure" element={<PublicLayout showAssistant><BookingProcedure /></PublicLayout>} />
 
           {/* student junior routes */}
           <Route 
