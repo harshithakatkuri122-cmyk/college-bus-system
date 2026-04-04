@@ -1,6 +1,56 @@
 const db = require("../config/db");
 
+async function ensureInchargeAssignmentTable() {
+  await db.execute(
+    `CREATE TABLE IF NOT EXISTS incharge_route_assignments (
+      user_id INT NOT NULL PRIMARY KEY,
+      route_no INT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_incharge_assignments_route FOREIGN KEY (route_no) REFERENCES routes(route_no) ON DELETE SET NULL
+    )`
+  );
+}
+
+async function ensureRouteIdColumn() {
+  const [routeIdColumn] = await db.execute(
+    "SHOW COLUMNS FROM bus_incharges LIKE 'route_id'"
+  );
+
+  if (routeIdColumn.length > 0) {
+    return true;
+  }
+
+  try {
+    await db.execute("ALTER TABLE bus_incharges ADD COLUMN route_id INT NULL");
+
+    await db.execute(
+      "ALTER TABLE bus_incharges ADD INDEX idx_bus_incharges_route_id (route_id)"
+    );
+
+    await db.execute(
+      `ALTER TABLE bus_incharges
+       ADD CONSTRAINT fk_bus_incharges_route
+       FOREIGN KEY (route_id) REFERENCES routes(route_no)
+       ON DELETE SET NULL`
+    );
+  } catch (error) {
+    // Ignore duplicate/index/constraint errors; final verification decides outcome.
+    console.warn("Unable to auto-add route_id on bus_incharges:", error.message);
+  }
+
+  const [recheck] = await db.execute(
+    "SHOW COLUMNS FROM bus_incharges LIKE 'route_id'"
+  );
+  return recheck.length > 0;
+}
+
 async function resolveRouteColumn() {
+  const hasRouteId = await ensureRouteIdColumn();
+  if (hasRouteId) {
+    return "route_id";
+  }
+
   const [routeIdColumn] = await db.execute(
     "SHOW COLUMNS FROM bus_incharges LIKE 'route_id'"
   );
@@ -37,15 +87,18 @@ exports.getAllIncharges = async (req, res) => {
          ORDER BY bi.name`
       );
     } else {
+      await ensureInchargeAssignmentTable();
       [rows] = await db.execute(
         `SELECT
           bi.id,
           bi.user_id,
           bi.name,
           bi.designation,
-          NULL AS route_id,
-          NULL AS route_name
+          ira.route_no AS route_id,
+          r.route_name
          FROM bus_incharges bi
+         LEFT JOIN incharge_route_assignments ira ON ira.user_id = bi.user_id
+         LEFT JOIN routes r ON r.route_no = ira.route_no
          ORDER BY bi.name`
       );
     }
@@ -70,20 +123,26 @@ exports.assignIncharge = async (req, res) => {
     }
 
     const routeColumn = await resolveRouteColumn();
+    let result;
+
     if (!routeColumn) {
-      return res.status(500).json({
-        message: "No route mapping column found in bus_incharges"
-      });
+      await ensureInchargeAssignmentTable();
+      [result] = await db.execute(
+        `INSERT INTO incharge_route_assignments (user_id, route_no)
+         VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE route_no = VALUES(route_no)`,
+        [userId, routeId]
+      );
+    } else {
+      [result] = await db.execute(
+        `UPDATE bus_incharges
+         SET ${routeColumn} = ?
+         WHERE user_id = ?`,
+        [routeId, userId]
+      );
     }
 
-    const [result] = await db.execute(
-      `UPDATE bus_incharges
-       SET ${routeColumn} = ?
-       WHERE user_id = ?`,
-      [routeId, userId]
-    );
-
-    if (result.affectedRows === 0) {
+    if (routeColumn && result.affectedRows === 0) {
       return res.status(404).json({ message: "Incharge not found" });
     }
 

@@ -20,7 +20,12 @@ export default function SeniorBusPass({ student, setStudent }) {
   const busNo = student?.bus_no || student?.busNo;
   const seatNo = student?.seat_no || student?.seatNo;
   const route = student?.route_name || "Not Assigned";
-  const paymentStatus = student?.payment_status || student?.paymentStatus || "Inactive";
+  const rawPaymentStatus = student?.payment_status || student?.paymentStatus || "Inactive";
+  const normalizedPayment = String(rawPaymentStatus).trim().toLowerCase();
+  const paymentStatus =
+    normalizedPayment === "success" || normalizedPayment === "paid"
+      ? "Active"
+      : rawPaymentStatus;
   const bookPath = Number(student?.year) === 1 ? "/student/junior/book" : "/student/senior";
 
   async function loadQrCode() {

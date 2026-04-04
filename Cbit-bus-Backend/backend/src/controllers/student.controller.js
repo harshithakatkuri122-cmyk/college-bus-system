@@ -195,7 +195,7 @@ exports.payForBus = async (req, res) => {
     const userId = req.user.id;
 
     const [students] = await db.execute(
-      "SELECT bus_no, seat_no FROM students WHERE user_id = ? LIMIT 1",
+      "SELECT bus_no, seat_no, route, payment_status FROM students WHERE user_id = ? LIMIT 1",
       [userId]
     );
 
@@ -207,12 +207,51 @@ exports.payForBus = async (req, res) => {
       return res.status(400).json({ message: "Book a seat before payment" });
     }
 
+    const currentStatus = String(students[0].payment_status || "").trim();
+    const txnRef = `TXN-${Date.now()}-${userId}`;
+
     await db.execute(
       "UPDATE students SET payment_status = 'Active' WHERE user_id = ?",
       [userId]
     );
 
-    return res.json({ message: "Payment successful", payment_status: "Active" });
+    if (currentStatus !== "Active") {
+      await db.execute(
+        `INSERT INTO transactions (student_id, amount, status, method, txn_ref)
+         VALUES (?, ?, 'Success', 'Online', ?)`,
+        [userId, 5000, txnRef]
+      );
+    }
+
+    const [statusRows] = await db.execute(
+      `SELECT
+        s.name,
+        s.roll_no,
+        s.route AS route_no,
+        r.route_name,
+        r.via,
+        s.bus_no,
+        s.seat_no,
+        s.payment_status
+      FROM students s
+      LEFT JOIN routes r ON s.route = r.route_no
+      WHERE s.user_id = ?
+      LIMIT 1`,
+      [userId]
+    );
+
+    const status = statusRows[0] || {};
+
+    return res.json({
+      message: currentStatus === "Active" ? "Payment already active" : "Payment successful",
+      payment_status: "Active",
+      transaction: {
+        txn_ref: txnRef,
+        amount: 5000,
+        status: "Success",
+      },
+      status,
+    });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });

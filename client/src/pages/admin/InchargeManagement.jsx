@@ -38,6 +38,7 @@ export default function InchargeManagement({ incharges, routes, refreshIncharges
         if (refreshIncharges) {
           await refreshIncharges();
         }
+        alert("Incharge assigned successfully.");
       } catch (error) {
         console.error(error);
         alert(error.message || "Unable to assign incharge");
@@ -68,6 +69,7 @@ export default function InchargeManagement({ incharges, routes, refreshIncharges
       if (refreshIncharges) {
         await refreshIncharges();
       }
+      alert("Route unassigned successfully.");
     } catch (error) {
       console.error(error);
       alert(error.message || "Unable to remove assignment");

@@ -3,14 +3,55 @@ import React, { useState } from "react";
 export default function PaymentSection({ onPaymentSuccess, onCancel, route, seat }) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("card");
+  const [paymentError, setPaymentError] = useState("");
 
-  const handlePayment = () => {
-    setIsProcessing(true);
-    // Simulate payment processing
-    setTimeout(() => {
+  const PAY_ENDPOINT = "/api/student/pay";
+  const STATUS_ENDPOINT = "/api/student/my-status";
+
+  const handlePayment = async () => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      setPaymentError("Please login again to continue payment.");
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      setPaymentError("");
+
+      const payRes = await fetch(PAY_ENDPOINT, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const payData = await payRes.json();
+      if (!payRes.ok) {
+        throw new Error(payData.message || "Payment failed");
+      }
+
+      const statusRes = await fetch(STATUS_ENDPOINT, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const statusData = await statusRes.json();
+      if (!statusRes.ok) {
+        throw new Error(statusData.message || "Failed to refresh status");
+      }
+
+      if (onPaymentSuccess) {
+        onPaymentSuccess(statusData);
+      }
+    } catch (error) {
+      console.error(error);
+      setPaymentError(error.message || "Unable to complete payment");
+    } finally {
       setIsProcessing(false);
-      onPaymentSuccess();
-    }, 2000);
+    }
   };
 
   return (
@@ -104,6 +145,12 @@ export default function PaymentSection({ onPaymentSuccess, onCancel, route, seat
           <span className="font-semibold">Important:</span> Your bus pass will be activated immediately after successful payment. Keep your pass details safe for verification.
         </p>
       </div>
+
+      {paymentError && (
+        <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-8 rounded">
+          <p className="text-sm text-red-700">{paymentError}</p>
+        </div>
+      )}
 
       {/* Buttons */}
       <div className="flex gap-3">
