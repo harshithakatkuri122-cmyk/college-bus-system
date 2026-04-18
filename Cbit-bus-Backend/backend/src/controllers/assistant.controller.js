@@ -2,16 +2,36 @@ const OpenAI = require("openai");
 const db = require("../config/db");
 
 const SYSTEM_PROMPT =
-  "You are a CBIT bus assistant. Answer strictly using given data. Do not hallucinate.";
+  "You are a helpful AI assistant for CBIT transport users. For transport-related questions, prioritize the provided database context. For general questions, answer like a normal helpful AI assistant.";
 
 const PUBLIC_SYSTEM_PROMPT =
-  "You are a CBIT transport assistant for website visitors. Answer strictly using the provided booking guide and route data. Do not hallucinate.";
+  "You are a helpful AI assistant for CBIT website visitors. For transport-related questions, use the provided booking guide and route data. For general questions, answer naturally and helpfully.";
 
-const CACHE_TTL_MS = 2 * 60 * 1000;
+const GENERAL_SYSTEM_PROMPT =
+  "You are a helpful, clear, and conversational AI assistant. Answer naturally and directly.";
+
+const CACHE_TTL_MS = Number(process.env.ASSISTANT_CACHE_TTL_MS || 2 * 60 * 1000);
+const MAX_HISTORY_MESSAGES = 8;
 const answerCache = new Map();
 
-function cacheKey(studentId, question) {
-  return `${studentId}::${String(question || "").trim().toLowerCase()}`;
+function normalizeHistory(history) {
+  if (!Array.isArray(history)) return [];
+
+  return history
+    .filter((item) => item && (item.role === "user" || item.role === "assistant"))
+    .map((item) => ({
+      role: item.role,
+      content: String(item.content || "").trim().slice(0, 500),
+    }))
+    .filter((item) => item.content.length > 0)
+    .slice(-MAX_HISTORY_MESSAGES);
+}
+
+function cacheKey(scope, question, history = []) {
+  const historyPart = history
+    .map((item) => `${item.role}:${item.content.toLowerCase()}`)
+    .join("|");
+  return `${scope}::${String(question || "").trim().toLowerCase()}::${historyPart}`;
 }
 
 function readCache(key) {
@@ -23,12 +43,26 @@ function readCache(key) {
     return null;
   }
 
-  return entry.answer;
+  if (entry.payload && typeof entry.payload.answer === "string") {
+    return entry.payload;
+  }
+
+  // Backward compatibility for older cached string-only entries.
+  if (typeof entry.answer === "string") {
+    return {
+      answer: entry.answer,
+      meta: {
+        source: "cache-legacy",
+      },
+    };
+  }
+
+  return null;
 }
 
-function writeCache(key, answer) {
+function writeCache(key, payload) {
   answerCache.set(key, {
-    answer,
+    payload,
     expiresAt: Date.now() + CACHE_TTL_MS,
   });
 }
@@ -76,10 +110,65 @@ function selectFirstAvailable(columns, candidates) {
   return null;
 }
 
-function buildUserPrompt({ question, studentData, currentRoute, timings, alternativeRoutes, notes }) {
+function isCasualMessage(question) {
+  const normalized = String(question || "").trim().toLowerCase();
+  if (!normalized) return false;
+
+  return /^(hi|hii|hello|hey|yo|how are you|how r u|what'?s up|sup|good morning|good afternoon|good evening)$/.test(
+    normalized
+  );
+}
+
+function buildCasualReply(mode) {
+  if (mode === "public") {
+    return [
+      "Hi. I am doing well, thanks for asking.",
+      "I can help with bus pass booking steps, route info, and renewal guidance.",
+      "Try asking: How do I book a bus pass?",
+    ].join("\n");
+  }
+
+  return [
+    "Hi. I am doing well, thanks for asking.",
+    "I can help you with your route, ETA, timings, and alternative routes.",
+    "Try asking: What is my current route and seat?",
+  ].join("\n");
+}
+
+function isTransportQuestion(question) {
+  const text = String(question || "").trim().toLowerCase();
+  if (!text) return false;
+
+  return /\b(bus|route|seat|stop|timing|eta|pass|booking|renew|renewal|transport|driver|pickup|drop|college bus|cbit bus|fare|payment)\b/.test(
+    text
+  );
+}
+
+function buildGeneralPrompt({ question, conversationHistory, mode }) {
+  return [
+    "Mode:",
+    mode,
+    "",
+    "Recent Conversation:",
+    JSON.stringify(conversationHistory || [], null, 2),
+    "",
+    "User Question:",
+    question,
+    "",
+    "Style Rules:",
+    "- Answer directly and naturally.",
+    "- Keep tone friendly and human.",
+    "- Use short bullets only when useful.",
+  ].join("\n");
+}
+
+function buildUserPrompt({ question, conversationHistory, studentData, currentRoute, timings, alternativeRoutes, notes }) {
   return [
     "Question:",
     question,
+    "",
+    "Recent Conversation:",
+    JSON.stringify(conversationHistory || [], null, 2),
     "",
     "Student Data:",
     JSON.stringify(studentData, null, 2),
@@ -97,18 +186,24 @@ function buildUserPrompt({ question, studentData, currentRoute, timings, alterna
     JSON.stringify(notes, null, 2),
     "",
     "Rules:",
-    "- Only answer from the provided data.",
+    "- If the question is transport-related, prioritize the provided data.",
     "- If data is missing, clearly say it is not available in the database.",
-    "- Keep answer concise and student-friendly.",
-    "- When useful, format the response with short labeled sections like Route Details, ETA, Alternative Routes, Timings, and Notes.",
+    "- Keep answer concise, student-friendly, and natural.",
+    "- If the question is a follow-up, use Recent Conversation for context.",
+    "- Avoid repeating the same wording across turns; vary phrasing naturally.",
+    "- Use short labeled sections only when they improve clarity.",
+    "- For simple questions, answer in 2-5 lines without unnecessary headings.",
     "- Prefer bullet points for route/stop lists and keep time values as they appear in the database.",
   ].join("\n");
 }
 
-function buildPublicPrompt({ question, routes, bookingGuide, notes }) {
+function buildPublicPrompt({ question, conversationHistory, routes, bookingGuide, notes }) {
   return [
     "Question:",
     question,
+    "",
+    "Recent Conversation:",
+    JSON.stringify(conversationHistory || [], null, 2),
     "",
     "Booking Guide:",
     JSON.stringify(bookingGuide, null, 2),
@@ -120,24 +215,47 @@ function buildPublicPrompt({ question, routes, bookingGuide, notes }) {
     JSON.stringify(notes, null, 2),
     "",
     "Rules:",
-    "- Only answer from the provided booking guide and routes.",
+    "- If the question is transport-related, prioritize the provided booking guide and routes.",
     "- If the information is not in the data, say it is not available.",
-    "- Keep the response concise and practical.",
-    "- Use labeled sections when useful, such as Booking Steps, Routes, and Notes.",
+    "- Keep the response concise, practical, and conversational.",
+    "- If the question is a follow-up, use Recent Conversation for context.",
+    "- Avoid repetitive phrasing across turns.",
+    "- Use labeled sections only when useful, such as Booking Steps, Routes, and Notes.",
+    "- For straightforward questions, prefer a direct 2-5 line reply.",
   ].join("\n");
 }
 
 async function generateOpenAIAnswer({ systemPrompt, prompt, fallback }) {
+  const useGroq = Boolean(process.env.GROQ_API_KEY);
+  const provider = useGroq ? "groq" : "openai";
+
   try {
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error("OPENAI_API_KEY is not configured");
+    const groqApiKey = process.env.GROQ_API_KEY;
+    const openAIApiKey = process.env.OPENAI_API_KEY;
+
+    if (!groqApiKey && !openAIApiKey) {
+      throw new Error("Neither GROQ_API_KEY nor OPENAI_API_KEY is configured");
     }
 
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const client = useGroq
+      ? new OpenAI({
+          apiKey: groqApiKey,
+          baseURL: process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1",
+        })
+      : new OpenAI({ apiKey: openAIApiKey });
+
+    const model = useGroq
+      ? process.env.GROQ_MODEL || "llama-3.1-8b-instant"
+      : process.env.OPENAI_MODEL || "gpt-4o-mini";
+
+    const configuredTemperature = Number(process.env.ASSISTANT_TEMPERATURE || 0.35);
+    const temperature = Number.isFinite(configuredTemperature)
+      ? Math.min(Math.max(configuredTemperature, 0), 1)
+      : 0.35;
 
     const completion = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0,
+      model,
+      temperature,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: prompt },
@@ -149,10 +267,23 @@ async function generateOpenAIAnswer({ systemPrompt, prompt, fallback }) {
         ? String(completion.choices[0].message.content || "").trim()
         : "";
 
-    return aiAnswer || fallback || "I could not generate a response from available data.";
+    const hasModelAnswer = Boolean(aiAnswer);
+    return {
+      answer: aiAnswer || fallback || "I could not generate a response from available data.",
+      meta: {
+        source: hasModelAnswer ? "llm" : "fallback",
+        provider,
+      },
+    };
   } catch (error) {
-    console.warn("OpenAI fallback used:", error.message);
-    return fallback || "I could not generate a response from available data.";
+    console.warn("LLM fallback used:", error.message);
+    return {
+      answer: fallback || "I could not generate a response from available data.",
+      meta: {
+        source: "fallback",
+        provider,
+      },
+    };
   }
 }
 
@@ -188,10 +319,28 @@ function buildStudentFallbackAnswer({ student, currentRoute, timings, alternativ
   return lines.join("\n");
 }
 
-function buildPublicFallbackAnswer({ routes, bookingGuide }) {
+function buildPublicFallbackAnswer({ question, routes, bookingGuide }) {
+  const normalizedQuestion = String(question || "").toLowerCase();
+
+  if (isCasualMessage(normalizedQuestion)) {
+    return buildCasualReply("public");
+  }
+
+  const wantsBookingHelp = /book|booking|renew|renewal|payment|pass|steps|procedure/.test(
+    normalizedQuestion
+  );
+
   const routeNames = Array.isArray(routes)
     ? routes.slice(0, 8).map((route) => `${route.route_no} - ${route.route_name}`)
     : [];
+
+  if (!wantsBookingHelp) {
+    return [
+      "I can help with CBIT transport topics: booking steps, renewal, and available routes.",
+      "That specific query is outside the transport data I currently have.",
+      "Try asking: Which routes are available from Amberpet?",
+    ].join("\n");
+  }
 
   return [
     "Booking Steps:",
@@ -206,6 +355,18 @@ exports.askAssistant = async (req, res) => {
   try {
     const question = String(req.body.question || "").trim();
     const requestedStudentId = req.body.studentId;
+    const history = normalizeHistory(req.body.history);
+    const transportQuery = isTransportQuestion(question);
+
+    if (isCasualMessage(question)) {
+      return res.json({
+        success: true,
+        answer: buildCasualReply("student"),
+        meta: {
+          source: "rule",
+        },
+      });
+    }
 
     if (!question) {
       return res.status(400).json({
@@ -225,13 +386,35 @@ exports.askAssistant = async (req, res) => {
       });
     }
 
-    const cacheId = cacheKey(studentId, question);
+    if (!transportQuery) {
+      const generalAnswer = await generateOpenAIAnswer({
+        systemPrompt: GENERAL_SYSTEM_PROMPT,
+        prompt: buildGeneralPrompt({
+          question,
+          conversationHistory: history,
+          mode: "student",
+        }),
+        fallback: "I can help with that. Please ask your question again with a bit more detail.",
+      });
+
+      return res.json({
+        success: true,
+        answer: generalAnswer.answer,
+        meta: generalAnswer.meta,
+      });
+    }
+
+    const cacheId = cacheKey(studentId, question, history);
     const cached = readCache(cacheId);
     if (cached) {
       return res.json({
         success: true,
-        answer: cached,
+        answer: cached.answer,
         cached: true,
+        meta: {
+          ...(cached.meta || {}),
+          cached: true,
+        },
       });
     }
 
@@ -394,6 +577,7 @@ exports.askAssistant = async (req, res) => {
       systemPrompt: SYSTEM_PROMPT,
       prompt: buildUserPrompt({
         question,
+        conversationHistory: history,
         studentData: student,
         currentRoute: currentRouteData,
         timings,
@@ -413,7 +597,8 @@ exports.askAssistant = async (req, res) => {
 
     return res.json({
       success: true,
-      answer: finalAnswer,
+      answer: finalAnswer.answer,
+      meta: finalAnswer.meta,
     });
   } catch (error) {
     console.error("assistant error:", error);
@@ -427,6 +612,36 @@ exports.askAssistant = async (req, res) => {
 exports.askPublicAssistant = async (req, res) => {
   try {
     const question = String(req.body.question || "").trim();
+    const history = normalizeHistory(req.body.history);
+    const transportQuery = isTransportQuestion(question);
+
+    if (isCasualMessage(question)) {
+      return res.json({
+        success: true,
+        answer: buildCasualReply("public"),
+        meta: {
+          source: "rule",
+        },
+      });
+    }
+
+    if (!transportQuery) {
+      const generalAnswer = await generateOpenAIAnswer({
+        systemPrompt: GENERAL_SYSTEM_PROMPT,
+        prompt: buildGeneralPrompt({
+          question,
+          conversationHistory: history,
+          mode: "public",
+        }),
+        fallback: "I can help with that. Please ask your question again with a bit more detail.",
+      });
+
+      return res.json({
+        success: true,
+        answer: generalAnswer.answer,
+        meta: generalAnswer.meta,
+      });
+    }
 
     if (!question) {
       return res.status(400).json({
@@ -435,13 +650,17 @@ exports.askPublicAssistant = async (req, res) => {
       });
     }
 
-    const cacheId = cacheKey("public", question);
+    const cacheId = cacheKey("public", question, history);
     const cached = readCache(cacheId);
     if (cached) {
       return res.json({
         success: true,
-        answer: cached,
+        answer: cached.answer,
         cached: true,
+        meta: {
+          ...(cached.meta || {}),
+          cached: true,
+        },
       });
     }
 
@@ -470,11 +689,13 @@ exports.askPublicAssistant = async (req, res) => {
       systemPrompt: PUBLIC_SYSTEM_PROMPT,
       prompt: buildPublicPrompt({
         question,
+        conversationHistory: history,
         routes,
         bookingGuide,
         notes,
       }),
       fallback: buildPublicFallbackAnswer({
+        question,
         routes,
         bookingGuide,
       }),
@@ -484,7 +705,8 @@ exports.askPublicAssistant = async (req, res) => {
 
     return res.json({
       success: true,
-      answer: finalAnswer,
+      answer: finalAnswer.answer,
+      meta: finalAnswer.meta,
     });
   } catch (error) {
     console.error("public assistant error:", error);

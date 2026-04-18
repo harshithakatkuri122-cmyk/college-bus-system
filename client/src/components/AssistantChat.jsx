@@ -99,6 +99,7 @@ export default function AssistantChat({ mode = "student" }) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [assistantMeta, setAssistantMeta] = useState(null);
   const [messages, setMessages] = useState([
     {
       role: "assistant",
@@ -136,6 +137,29 @@ export default function AssistantChat({ mode = "student" }) {
     return !loading && input.trim().length > 0 && Boolean(user && user.id);
   }, [loading, input, user, mode]);
 
+  const statusSource = assistantMeta && assistantMeta.source ? assistantMeta.source : "idle";
+  const isLiveLlm = statusSource === "llm";
+  const isFallbackState = statusSource === "fallback" || statusSource === "rule" || statusSource === "cache-legacy";
+  const providerLabel = assistantMeta && assistantMeta.provider
+    ? String(assistantMeta.provider).toUpperCase()
+    : "AI";
+
+  const statusLabel = loading
+    ? "THINKING"
+    : isLiveLlm
+      ? `${providerLabel} LIVE`
+      : isFallbackState
+        ? "FALLBACK"
+        : "READY";
+
+  const statusClassName = loading
+    ? "bg-sky-100 text-sky-800 border-sky-200"
+    : isLiveLlm
+      ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+      : isFallbackState
+        ? "bg-amber-100 text-amber-800 border-amber-200"
+        : "bg-white/15 text-white border-white/30";
+
   async function sendMessage() {
     const question = input.trim();
     if (!question) return;
@@ -154,6 +178,18 @@ export default function AssistantChat({ mode = "student" }) {
       return;
     }
 
+    const history = [...messages, { role: "user", content: question }]
+      .filter((message, index) => {
+        // Skip the initial greeting because it does not help follow-up reasoning.
+        if (index === 0 && message.role === "assistant") return false;
+        return message.role === "user" || message.role === "assistant";
+      })
+      .slice(-8)
+      .map((message) => ({
+        role: message.role,
+        content: String(message.content || ""),
+      }));
+
     setMessages((prev) => [...prev, { role: "user", content: question }]);
     setInput("");
     setLoading(true);
@@ -167,6 +203,7 @@ export default function AssistantChat({ mode = "student" }) {
         },
         body: JSON.stringify({
           question,
+          history,
           ...(isPublicMode ? {} : { studentId: user.id }),
         }),
       });
@@ -177,12 +214,15 @@ export default function AssistantChat({ mode = "student" }) {
         throw new Error(data.message || "Failed to get assistant response");
       }
 
+      setAssistantMeta(data.meta || null);
+
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: data.answer || "No answer available." },
       ]);
     } catch (error) {
       console.error(error);
+      setAssistantMeta({ source: "fallback" });
       setMessages((prev) => [
         ...prev,
         {
@@ -284,7 +324,14 @@ export default function AssistantChat({ mode = "student" }) {
           <div className="px-4 py-3 bg-green-700 text-white flex items-center justify-between">
             <div>
               <h3 className="font-semibold">CBIT Bus Assistant</h3>
-              <p className="text-xs text-green-100">Data-backed responses only</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <p className="text-xs text-green-100">Smart assistant mode</p>
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${statusClassName}`}
+                >
+                  {statusLabel}
+                </span>
+              </div>
             </div>
             <button
               onClick={() => setOpen(false)}
