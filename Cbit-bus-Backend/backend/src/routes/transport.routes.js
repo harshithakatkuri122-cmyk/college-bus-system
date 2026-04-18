@@ -24,7 +24,21 @@ router.get(
   getStudentAssignments
 );
 
+router.get(
+  "/admin/students",
+  authMiddleware,
+  authorizeRoles("transport-admin"),
+  getStudentAssignments
+);
+
 router.get("/incharges", getAllIncharges);
+
+router.get(
+  "/admin/incharges",
+  authMiddleware,
+  authorizeRoles("transport-admin"),
+  getAllIncharges
+);
 
 router.post(
   "/assign-incharge",
@@ -33,8 +47,22 @@ router.post(
   assignIncharge
 );
 
+router.post(
+  "/admin/assign-incharge",
+  authMiddleware,
+  authorizeRoles("transport-admin"),
+  assignIncharge
+);
+
 router.get(
   "/transactions",
+  authMiddleware,
+  authorizeRoles("transport-admin"),
+  getTransactions
+);
+
+router.get(
+  "/admin/transactions",
   authMiddleware,
   authorizeRoles("transport-admin"),
   getTransactions

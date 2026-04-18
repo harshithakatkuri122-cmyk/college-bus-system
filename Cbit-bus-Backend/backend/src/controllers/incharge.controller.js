@@ -122,6 +122,32 @@ exports.assignIncharge = async (req, res) => {
       return res.status(400).json({ message: "route_id and user_id are required" });
     }
 
+    const [inchargeRows] = await db.execute(
+      `SELECT user_id
+       FROM bus_incharges
+       WHERE user_id = ?
+       LIMIT 1`,
+      [userId]
+    );
+
+    if (inchargeRows.length === 0) {
+      return res.status(404).json({ message: "Incharge not found" });
+    }
+
+    if (routeId !== null) {
+      const [routeRows] = await db.execute(
+        `SELECT route_no
+         FROM routes
+         WHERE route_no = ?
+         LIMIT 1`,
+        [routeId]
+      );
+
+      if (routeRows.length === 0) {
+        return res.status(404).json({ message: "Route not found" });
+      }
+    }
+
     const routeColumn = await resolveRouteColumn();
     let result;
 
@@ -149,6 +175,9 @@ exports.assignIncharge = async (req, res) => {
     return res.json({ message: "Incharge assigned successfully" });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({
+      message: "Failed to assign incharge",
+      error: error && (error.sqlMessage || error.message) ? (error.sqlMessage || error.message) : "Unknown error",
+    });
   }
 };

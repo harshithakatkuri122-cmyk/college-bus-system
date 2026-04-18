@@ -11,8 +11,22 @@ import TransactionTable from "./TransactionTable";
 import NoticeForm from "./NoticeForm";
 import ReportsSection from "./ReportsSection";
 import AcademicControl from "./AcademicControl";
+import { useLocation, useNavigate } from "react-router-dom";
+
+const SECTION_PATHS = {
+  overview: "overview",
+  routes: "routes",
+  students: "students",
+  incharges: "incharges",
+  transactions: "transactions",
+  notices: "notices",
+  academic: "academic",
+  reports: "reports",
+};
 
 export default function AdminDashboard() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState("overview");
 
   const [routes, setRoutes] = useState([]);
@@ -181,6 +195,41 @@ export default function AdminDashboard() {
     loadDashboardData();
   }, []);
 
+  useEffect(() => {
+    const slug = String(location.pathname || "")
+      .replace(/^\/admin\/?/, "")
+      .split("/")[0]
+      .trim()
+      .toLowerCase();
+
+    if (!slug) {
+      if (activeSection !== "overview") {
+        setActiveSection("overview");
+      }
+      return;
+    }
+
+    const matchedSection = Object.keys(SECTION_PATHS).find(
+      (sectionKey) => SECTION_PATHS[sectionKey] === slug
+    );
+
+    if (matchedSection) {
+      if (activeSection !== matchedSection) {
+        setActiveSection(matchedSection);
+      }
+      return;
+    }
+
+    setActiveSection("overview");
+    navigate("/admin/overview", { replace: true });
+  }, [location.pathname, navigate]);
+
+  const handleSectionSelect = (sectionKey) => {
+    const safeSection = SECTION_PATHS[sectionKey] ? sectionKey : "overview";
+    setActiveSection(safeSection);
+    navigate(`/admin/${SECTION_PATHS[safeSection]}`);
+  };
+
   const addOrUpdateRoute = (route) => {
     setRoutes((prev) => {
       const exists = prev.find((r) => r.id === route.id);
@@ -330,7 +379,7 @@ export default function AdminDashboard() {
     <div className="flex min-h-screen">
       {/* fixed stripe at top for admin pages */}
       <div className="fixed top-0 left-0 w-full h-12 bg-green-700 border-b-4 border-amber-900 z-40" />
-      <AdminSidebar active={activeSection} onSelect={setActiveSection} />
+      <AdminSidebar active={activeSection} onSelect={handleSectionSelect} />
       <div className="flex-1 flex flex-col">
         {activeSection === "overview" && <AdminHeader />}
         {activeSection !== "overview" && <AdminTopBar />}

@@ -208,7 +208,17 @@ export default function AssistantChat({ mode = "student" }) {
         }),
       });
 
-      const data = await res.json();
+      let data;
+      const contentType = String(res.headers.get("content-type") || "").toLowerCase();
+      if (contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        data = {
+          success: false,
+          message: text || "Unexpected server response",
+        };
+      }
 
       if (!res.ok || !data.success) {
         throw new Error(data.message || "Failed to get assistant response");
