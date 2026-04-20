@@ -15,7 +15,12 @@ const {
   getStudentQrByUserId,
   payForBus,
 } = require("../controllers/student.controller");
-const { bookSeat, bookSeatByRoute } = require("../controllers/booking.controller");
+const {
+  bookSeat,
+  bookSeatByRoute,
+  renewBooking,
+  changeBus,
+} = require("../controllers/booking.controller");
 const { getNoticesByUser } = require("../controllers/notice.controller");
 
 router.get("/test", (req, res) => {
@@ -58,6 +63,20 @@ router.post(
   authMiddleware,
   authorizeRoles("student"),
   bookSeatByRoute
+);
+
+router.post(
+  "/renewal",
+  authMiddleware,
+  authorizeRoles("student"),
+  renewBooking
+);
+
+router.post(
+  "/change-bus",
+  authMiddleware,
+  authorizeRoles("student"),
+  changeBus
 );
 
 router.get(

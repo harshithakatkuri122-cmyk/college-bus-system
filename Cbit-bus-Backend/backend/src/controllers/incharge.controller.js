@@ -116,10 +116,19 @@ exports.assignIncharge = async (req, res) => {
     const routeId = routeIdRaw === null || routeIdRaw === "" || Number(routeIdRaw) === 0
       ? null
       : Number(routeIdRaw);
-    const userId = Number(req.body.user_id);
+    const rawInchargeId = req.body.user_id ?? req.body.incharge_id;
+    const userId = Number(rawInchargeId);
 
-    if ((routeId !== null && !Number.isInteger(routeId)) || !Number.isInteger(userId)) {
-      return res.status(400).json({ message: "route_id and user_id are required" });
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({
+        message: "Invalid incharge selected",
+      });
+    }
+
+    if (routeId !== null && !Number.isInteger(routeId)) {
+      return res.status(400).json({
+        message: "Invalid route selected",
+      });
     }
 
     const [inchargeRows] = await db.execute(

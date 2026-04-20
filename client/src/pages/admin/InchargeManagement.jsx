@@ -47,7 +47,7 @@ export default function InchargeManagement({ incharges, routes, refreshIncharges
       const userId = Number(selectedIncharge.user_id ?? selectedIncharge.id ?? selectedIncharge.value);
 
       if (!Number.isInteger(routeId) || !Number.isInteger(userId)) {
-        throw new Error("Invalid incharge or route selection");
+        throw new Error("Invalid incharge selected");
       }
 
       const token = localStorage.getItem("token");
@@ -60,6 +60,7 @@ export default function InchargeManagement({ incharges, routes, refreshIncharges
         body: JSON.stringify({
           route_id: routeId,
           user_id: userId,
+          incharge_id: userId,
         }),
       });
 
@@ -101,6 +102,7 @@ export default function InchargeManagement({ incharges, routes, refreshIncharges
         body: JSON.stringify({
           route_id: null,
           user_id: userId,
+          incharge_id: userId,
         }),
       });
 

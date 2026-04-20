@@ -1,5 +1,9 @@
 const db = require("../config/db");
 const QRCode = require("qrcode");
+const {
+  getCurrentAcademicYear,
+  ensureBookingsTable,
+} = require("../services/bookings.service");
 
 function getAdjacentSeat(seatNo) {
   return seatNo % 2 === 0 ? seatNo - 1 : seatNo + 1;
@@ -154,6 +158,10 @@ exports.selectRoute = async (req, res) => {
 exports.getMyStatus = async (req, res) => {
   try {
     const userId = req.user.id;
+    const academicYear = getCurrentAcademicYear();
+
+    await ensureBookingsTable(db);
+
     const [rows] = await db.execute(
       `SELECT
         s.*,
@@ -172,6 +180,17 @@ exports.getMyStatus = async (req, res) => {
 
     const student = rows[0];
 
+    const [renewalRows] = await db.execute(
+      `SELECT id
+       FROM bookings
+       WHERE student_id = ?
+         AND academic_year = ?
+       LIMIT 1`,
+      [userId, academicYear]
+    );
+
+    const hasRenewedCurrentYear = renewalRows.length > 0;
+
     return res.json({
       name: student.name,
       roll_no: student.roll_no,
@@ -183,7 +202,38 @@ exports.getMyStatus = async (req, res) => {
       payment_status: student.payment_status,
       gender: student.gender,
       driver_contact: student.driver_contact,
+      academic_year: academicYear,
+      has_renewed_current_year: hasRenewedCurrentYear,
     });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.getStudentAssignmentById = async (req, res) => {
+  try {
+    const userId = Number(req.params.user_id || req.params.id);
+
+    if (!Number.isInteger(userId)) {
+      return res.status(400).json({ message: "Invalid student id" });
+    }
+
+    const [rows] = await db.execute(
+      `SELECT
+        s.*, r.route_name
+       FROM students s
+       LEFT JOIN routes r ON s.route = r.route_no
+       WHERE s.user_id = ?
+       LIMIT 1`,
+      [userId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    return res.json(rows[0]);
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });

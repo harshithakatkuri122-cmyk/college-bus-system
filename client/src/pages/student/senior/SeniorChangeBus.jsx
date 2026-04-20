@@ -6,24 +6,73 @@ export default function SeniorChangeBus({ student, setStudent }) {
   const [step, setStep] = useState("selectRoute"); // 'selectRoute' | 'selectSeat' | 'complete'
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [selectedSeat, setSelectedSeat] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   // Step 1: Route selected
   const handleRouteSelected = (route) => {
+    setError("");
     setSelectedRoute(route);
     setStep("selectSeat");
   };
 
   // Step 2: Seat selected
-  const handleSeatSelected = (seat) => {
-    setSelectedSeat(seat);
-    // Keep local context consistent after route/seat selection.
-    setStudent((prev) => ({
-      ...prev,
-      route: selectedRoute?.route_no,
-      bus_no: selectedRoute?.route_no,
-      seat_no: seat,
-    }));
-    setStep("complete");
+  const handleSeatSelected = async (seat) => {
+    const token = localStorage.getItem("token");
+    if (!token || !selectedRoute?.route_no) {
+      setError("Unable to change bus. Please login again and reselect route.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError("");
+      setSelectedSeat(seat);
+
+      const response = await fetch("/api/student/change-bus", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          route_no: Number(selectedRoute.route_no),
+          seat_no: Number(seat),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Unable to change bus");
+      }
+
+      const statusRes = await fetch("/api/student/my-status", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const statusData = await statusRes.json();
+      if (!statusRes.ok) {
+        throw new Error(statusData.message || "Failed to refresh student status");
+      }
+
+      setStudent((prev) => ({
+        ...(prev || {}),
+        ...statusData,
+        hasBookedBus: Boolean(statusData.bus_no),
+        hasPaidFees: statusData.payment_status === "Active",
+      }));
+
+      window.dispatchEvent(new Event("student-status-refresh"));
+      setStep("complete");
+    } catch (changeError) {
+      console.error(changeError);
+      setError(changeError.message || "Unable to change bus");
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Cancel handler
@@ -31,6 +80,7 @@ export default function SeniorChangeBus({ student, setStudent }) {
     setStep("selectRoute");
     setSelectedRoute(null);
     setSelectedSeat(null);
+    setError("");
   };
 
   // Step: Select Route
@@ -47,11 +97,19 @@ export default function SeniorChangeBus({ student, setStudent }) {
   // Step: Select Seat
   if (step === "selectSeat") {
     return (
-      <SeatSelection
-        route={selectedRoute}
-        onConfirm={handleSeatSelected}
-        onCancel={handleCancel}
-      />
+      <div className="space-y-4">
+        {error && (
+          <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4">
+            <p className="text-sm text-red-700">{error}</p>
+          </div>
+        )}
+        <SeatSelection
+          route={selectedRoute}
+          onConfirm={handleSeatSelected}
+          onCancel={handleCancel}
+        />
+        {saving && <p className="text-sm text-gray-600">Updating your bus assignment...</p>}
+      </div>
     );
   }
 
@@ -64,7 +122,7 @@ export default function SeniorChangeBus({ student, setStudent }) {
           Bus Change Successful!
         </h3>
         <p className="text-green-800 mb-6">
-          Your bus assignment has been updated immediately. No payment required for mid-year changes.
+          Your bus assignment has been updated immediately. Booking history is preserved for this academic year.
         </p>
         <div className="bg-white rounded-lg p-4 inline-block">
           <div className="text-sm space-y-1">

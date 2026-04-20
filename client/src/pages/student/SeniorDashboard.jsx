@@ -13,7 +13,6 @@ import SeniorNotices from "./senior/SeniorNotices";
 export default function SeniorDashboard() {
   const [activeSection, setActiveSection] = useState("details");
   const { student, setStudent } = useAuth();
-  const [localStudent, setLocalStudent] = useState(student || null);
 
   useEffect(() => {
     async function refreshStudentStatus() {
@@ -44,17 +43,19 @@ export default function SeniorDashboard() {
     refreshStudentStatus();
   }, [setStudent]);
 
-  useEffect(() => {
-    setLocalStudent(student || null);
-  }, [student]);
-
   const content = () => {
     if (!student) return <p>Loading transport data...</p>;
     switch (activeSection) {
       case "details":
         return <SeniorTransportDetails student={student} setStudent={setStudent} />;
       case "renew":
-        return <SeniorRenewalOptions student={student} setStudent={setStudent} />;
+        return (
+          <SeniorRenewalOptions
+            student={student}
+            setStudent={setStudent}
+            onGoToChangeBus={() => setActiveSection("changeBus")}
+          />
+        );
       case "pass":
         return <SeniorBusPass student={student} setStudent={setStudent} />;
       case "complaint":
@@ -73,7 +74,12 @@ export default function SeniorDashboard() {
       student={student}
       active={activeSection}
       onSelect={setActiveSection}
-      Sidebar={SeniorSidebar}
+      Sidebar={(props) => (
+        <SeniorSidebar
+          {...props}
+          hideRenew={Boolean(student?.has_renewed_current_year)}
+        />
+      )}
       Navbar={SeniorNavbar}
     >
       <div className="space-y-6">

@@ -6,7 +6,11 @@ const { authorizeRoles } = require("../middleware/role.middleware");
 const { bookSeatByBusNo } = require("../controllers/booking.controller");
 const { getSeatsByBusNo } = require("../controllers/catalog.controller");
 const { sendNotice, getNoticesByUser } = require("../controllers/notice.controller");
-const { getStudentDetails, getStudentAssignments } = require("../controllers/student.controller");
+const {
+  getStudentDetails,
+  getStudentAssignments,
+  getStudentAssignmentById,
+} = require("../controllers/student.controller");
 const { getAllIncharges, assignIncharge } = require("../controllers/incharge.controller");
 const { getTransactions } = require("../controllers/transaction.controller");
 
@@ -29,6 +33,13 @@ router.get(
   authMiddleware,
   authorizeRoles("transport-admin"),
   getStudentAssignments
+);
+
+router.get(
+  "/admin/students/:user_id",
+  authMiddleware,
+  authorizeRoles("transport-admin"),
+  getStudentAssignmentById
 );
 
 router.get("/incharges", getAllIncharges);
