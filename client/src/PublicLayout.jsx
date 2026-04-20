@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import cbitLogo from "./images/cbitlogo.png";
 import AssistantChat from "./components/AssistantChat";
+import FloatingNoticeAlert from "./components/FloatingNoticeAlert";
 
 export default function PublicLayout({ children, showAssistant = false }) {
   return (
@@ -35,6 +36,7 @@ export default function PublicLayout({ children, showAssistant = false }) {
       {children}
 
       {showAssistant && <AssistantChat mode="public" />}
+      <FloatingNoticeAlert />
 
       {/* FOOTER */}
       <footer
