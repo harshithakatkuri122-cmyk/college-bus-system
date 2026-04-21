@@ -20,6 +20,8 @@ app.use("/api/student", studentRoutes);
 app.use("/api", catalogRoutes);
 app.use("/api", transportRoutes);
 app.use("/api", assistantRoutes);
+app.use("/api/ai", assistantRoutes);
+app.use("/ai", assistantRoutes);
 app.use("/api/admin", adminRoutes);
 
 app.get("/", (req, res) => {

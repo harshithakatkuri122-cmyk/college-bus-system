@@ -47,13 +47,10 @@ function readCache(key) {
     return entry.payload;
   }
 
-  // Backward compatibility for older cached string-only entries.
   if (typeof entry.answer === "string") {
     return {
       answer: entry.answer,
-      meta: {
-        source: "cache-legacy",
-      },
+      meta: { source: "cache-legacy" },
     };
   }
 
@@ -68,46 +65,170 @@ function writeCache(key, payload) {
 }
 
 function normalizeValue(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function normalizeText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenizeText(value) {
+  return normalizeText(value)
+    .split(" ")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseTimeToMinutes(timeValue) {
+  const match = String(timeValue || "").trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return null;
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+
+  return hours * 60 + minutes;
+}
+
+function parseViaStops(via) {
+  return String(via || "")
+    .split(/->|→|,/) 
+    .map((stop) => stop.trim())
+    .filter(Boolean);
+}
+
+function scoreLocationMatch(location, candidateText) {
+  const normalizedLocation = normalizeText(location);
+  const normalizedCandidate = normalizeText(candidateText);
+
+  if (!normalizedLocation || !normalizedCandidate) return 0;
+  if (normalizedCandidate.includes(normalizedLocation)) return 100;
+
+  const locationTokens = tokenizeText(normalizedLocation);
+  const candidateTokens = new Set(tokenizeText(normalizedCandidate));
+  const overlap = locationTokens.filter((token) => candidateTokens.has(token)).length;
+
+  if (overlap === 0) return 0;
+  return 30 + overlap * 12;
+}
+
+function scoreTiming(preferredMinutes, arrivalTimes) {
+  if (!Number.isInteger(preferredMinutes)) {
+    return { score: 0, bestDiff: null, bestStop: null };
+  }
+
+  let bestDiff = null;
+  let bestStop = null;
+
+  for (const timing of arrivalTimes) {
+    const arrivalMinutes = parseTimeToMinutes(timing.arrival_time);
+    if (!Number.isInteger(arrivalMinutes)) continue;
+
+    const diff = Math.abs(preferredMinutes - arrivalMinutes);
+    if (bestDiff === null || diff < bestDiff) {
+      bestDiff = diff;
+      bestStop = timing.stop_name || null;
+    }
+  }
+
+  if (bestDiff === null) {
+    return { score: 0, bestDiff: null, bestStop: null };
+  }
+
+  return {
+    score: Math.max(0, 90 - bestDiff),
+    bestDiff,
+    bestStop,
+  };
+}
+
+function stripCodeFences(value) {
   return String(value || "")
     .trim()
-    .toLowerCase();
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
 }
 
-async function tableExists(tableName) {
-  const [rows] = await db.execute(
-    `SELECT 1
-     FROM information_schema.tables
-     WHERE table_schema = DATABASE() AND table_name = ?
-     LIMIT 1`,
-    [tableName]
+function safeParseJson(value) {
+  try {
+    return JSON.parse(stripCodeFences(value));
+  } catch (error) {
+    return null;
+  }
+}
+
+function buildRoutePromptRoutes(candidateRoutes) {
+  return candidateRoutes.map((route) => ({
+    id: route.id,
+    route_name: route.route_name,
+    via: route.via || "",
+    student_type: route.student_type || "",
+    matched_stop: route.matched_stop || null,
+    timing_diff: route.timing_diff,
+    timings: Array.isArray(route.timings)
+      ? route.timings.map((timing) => ({
+          stop_name: timing.stop_name,
+          arrival_time: timing.arrival_time,
+        }))
+      : [],
+  }));
+}
+
+function resolveAiRouteSelection(parsedResponse, candidateRoutes) {
+  const candidatesById = new Map(candidateRoutes.map((route) => [String(route.id), route]));
+  const candidatesByName = new Map(
+    candidateRoutes.map((route) => [normalizeText(route.route_name), route])
   );
 
-  return rows.length > 0;
-}
+  const pickRoute = (value) => {
+    if (!value) return null;
 
-async function getColumns(tableName) {
-  const [rows] = await db.execute(`SHOW COLUMNS FROM ${tableName}`);
-  return new Set(rows.map((row) => String(row.Field || "").toLowerCase()));
-}
+    if (typeof value === "object") {
+      if (value.id != null && candidatesById.has(String(value.id))) {
+        return candidatesById.get(String(value.id));
+      }
 
-async function fetchFirstRow(querySpecs) {
-  for (const spec of querySpecs) {
-    const [rows] = await db.execute(spec.sql, spec.params || []);
-    if (rows.length > 0) {
-      return rows[0];
+      const routeName = value.route_name || value.name;
+      if (routeName && candidatesByName.has(normalizeText(routeName))) {
+        return candidatesByName.get(normalizeText(routeName));
+      }
     }
-  }
 
-  return null;
+    const normalizedValue = normalizeText(value);
+    if (!normalizedValue) return null;
+
+    if (candidatesById.has(String(value))) {
+      return candidatesById.get(String(value));
+    }
+
+    return candidatesByName.get(normalizedValue) || null;
+  };
+
+  return {
+    recommended: pickRoute(parsedResponse?.recommended),
+    alternatives: Array.isArray(parsedResponse?.alternatives)
+      ? parsedResponse.alternatives.map(pickRoute).filter(Boolean)
+      : [],
+  };
 }
 
-function selectFirstAvailable(columns, candidates) {
-  for (const name of candidates) {
-    if (columns.has(name.toLowerCase())) {
-      return name;
-    }
-  }
-  return null;
+function buildRouteSuggestionResponse({ recommendedRoute, alternativeRoutes, explanation }) {
+  return {
+    recommended: recommendedRoute
+      ? { id: recommendedRoute.id, route_name: recommendedRoute.route_name }
+      : null,
+    alternatives: Array.isArray(alternativeRoutes)
+      ? alternativeRoutes.map((route) => ({ id: route.id, route_name: route.route_name }))
+      : [],
+    explanation: String(explanation || "Best route based on nearest stop and suitable timing"),
+  };
 }
 
 function isCasualMessage(question) {
@@ -117,22 +238,6 @@ function isCasualMessage(question) {
   return /^(hi|hii|hello|hey|yo|how are you|how r u|what'?s up|sup|good morning|good afternoon|good evening)$/.test(
     normalized
   );
-}
-
-function buildCasualReply(mode) {
-  if (mode === "public") {
-    return [
-      "Hi. I am doing well, thanks for asking.",
-      "I can help with bus pass booking steps, route info, and renewal guidance.",
-      "Try asking: How do I book a bus pass?",
-    ].join("\n");
-  }
-
-  return [
-    "Hi. I am doing well, thanks for asking.",
-    "I can help you with your route, ETA, timings, and alternative routes.",
-    "Try asking: What is my current route and seat?",
-  ].join("\n");
 }
 
 function isTransportQuestion(question) {
@@ -159,41 +264,6 @@ function buildGeneralPrompt({ question, conversationHistory, mode }) {
     "- Answer directly and naturally.",
     "- Keep tone friendly and human.",
     "- Use short bullets only when useful.",
-  ].join("\n");
-}
-
-function buildUserPrompt({ question, conversationHistory, studentData, currentRoute, timings, alternativeRoutes, notes }) {
-  return [
-    "Question:",
-    question,
-    "",
-    "Recent Conversation:",
-    JSON.stringify(conversationHistory || [], null, 2),
-    "",
-    "Student Data:",
-    JSON.stringify(studentData, null, 2),
-    "",
-    "Current Route:",
-    JSON.stringify(currentRoute, null, 2),
-    "",
-    "Timings:",
-    JSON.stringify(timings, null, 2),
-    "",
-    "Alternative Routes:",
-    JSON.stringify(alternativeRoutes, null, 2),
-    "",
-    "Notes:",
-    JSON.stringify(notes, null, 2),
-    "",
-    "Rules:",
-    "- If the question is transport-related, prioritize the provided data.",
-    "- If data is missing, clearly say it is not available in the database.",
-    "- Keep answer concise, student-friendly, and natural.",
-    "- If the question is a follow-up, use Recent Conversation for context.",
-    "- Avoid repeating the same wording across turns; vary phrasing naturally.",
-    "- Use short labeled sections only when they improve clarity.",
-    "- For simple questions, answer in 2-5 lines without unnecessary headings.",
-    "- Prefer bullet points for route/stop lists and keep time values as they appear in the database.",
   ].join("\n");
 }
 
@@ -287,325 +357,37 @@ async function generateOpenAIAnswer({ systemPrompt, prompt, fallback }) {
   }
 }
 
-function buildStudentFallbackAnswer({ student, currentRoute, timings, alternativeRoutes }) {
-  const lines = [];
-  lines.push(`Route Details: ${currentRoute.route_name || "Not assigned"}`);
-  lines.push(
-    `Bus Details: Bus ${student.bus_no || "Not assigned"}, Seat ${student.seat_no || "-"}`
-  );
-
-  if (currentRoute.start_point || currentRoute.end_point) {
-    lines.push(`Current Route: ${currentRoute.start_point || "-"} to ${currentRoute.end_point || "-"}`);
-  }
-
-  if (Array.isArray(timings) && timings.length > 0) {
-    lines.push("Timings:");
-    for (const timing of timings.slice(0, 6)) {
-      lines.push(`- ${timing.stop_name}: ${String(timing.arrival_time).slice(0, 5)}`);
-    }
-  } else {
-    lines.push("Timings: Not available in the database.");
-  }
-
-  if (Array.isArray(alternativeRoutes) && alternativeRoutes.length > 0) {
-    lines.push("Alternative Routes:");
-    for (const route of alternativeRoutes.slice(0, 5)) {
-      lines.push(`- ${route.route_name}`);
-    }
-  } else {
-    lines.push("Alternative Routes: None found with the same start point.");
-  }
-
-  return lines.join("\n");
-}
-
-function buildPublicFallbackAnswer({ question, routes, bookingGuide }) {
-  const normalizedQuestion = String(question || "").toLowerCase();
-
-  if (isCasualMessage(normalizedQuestion)) {
-    return buildCasualReply("public");
-  }
-
-  const wantsBookingHelp = /book|booking|renew|renewal|payment|pass|steps|procedure/.test(
-    normalizedQuestion
-  );
-
-  const routeNames = Array.isArray(routes)
-    ? routes.slice(0, 8).map((route) => `${route.route_no} - ${route.route_name}`)
-    : [];
-
-  if (!wantsBookingHelp) {
-    return [
-      "I can help with CBIT transport topics: booking steps, renewal, and available routes.",
-      "That specific query is outside the transport data I currently have.",
-      "Try asking: Which routes are available from Amberpet?",
-    ].join("\n");
-  }
-
-  return [
-    "Booking Steps:",
-    ...bookingGuide.map((step) => `- ${step}`),
-    "",
-    "Available Routes:",
-    ...(routeNames.length > 0 ? routeNames.map((route) => `- ${route}`) : ["- Not available in the database"]),
-  ].join("\n");
-}
-
 exports.askAssistant = async (req, res) => {
   try {
     const question = String(req.body.question || "").trim();
-    const requestedStudentId = req.body.studentId;
     const history = normalizeHistory(req.body.history);
-    const transportQuery = isTransportQuestion(question);
+
+    if (!question) {
+      return res.status(400).json({ success: false, message: "question is required" });
+    }
 
     if (isCasualMessage(question)) {
       return res.json({
         success: true,
-        answer: buildCasualReply("student"),
-        meta: {
-          source: "rule",
-        },
+        answer: "Hi. I can help with route suggestions, booking, and timing questions.",
+        meta: { source: "rule" },
       });
     }
 
-    if (!question) {
-      return res.status(400).json({
-        success: false,
-        message: "question is required",
-      });
-    }
-
-    const studentId = Number(
-      requestedStudentId != null ? requestedStudentId : req.user && req.user.id
-    );
-
-    if (!Number.isInteger(studentId) || studentId <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "valid studentId is required",
-      });
-    }
-
-    if (!transportQuery) {
-      const generalAnswer = await generateOpenAIAnswer({
-        systemPrompt: GENERAL_SYSTEM_PROMPT,
-        prompt: buildGeneralPrompt({
-          question,
-          conversationHistory: history,
-          mode: "student",
-        }),
-        fallback: "I can help with that. Please ask your question again with a bit more detail.",
-      });
-
-      return res.json({
-        success: true,
-        answer: generalAnswer.answer,
-        meta: generalAnswer.meta,
-      });
-    }
-
-    const cacheId = cacheKey(studentId, question, history);
-    const cached = readCache(cacheId);
-    if (cached) {
-      return res.json({
-        success: true,
-        answer: cached.answer,
-        cached: true,
-        meta: {
-          ...(cached.meta || {}),
-          cached: true,
-        },
-      });
-    }
-
-    const studentsColumns = await getColumns("students");
-    const routesColumns = await getColumns("routes");
-
-    const studentIdColumn = selectFirstAvailable(studentsColumns, ["user_id", "id"]);
-    const studentNameColumn = selectFirstAvailable(studentsColumns, ["name"]);
-    const studentRouteColumn = selectFirstAvailable(studentsColumns, ["route_id", "route"]);
-
-    if (!studentIdColumn || !studentNameColumn || !studentRouteColumn) {
-      return res.status(500).json({
-        success: false,
-        message: "Student table schema not supported",
-      });
-    }
-
-    const routeIdColumn = selectFirstAvailable(routesColumns, ["id", "route_no"]);
-    const routeNameColumn = selectFirstAvailable(routesColumns, ["route_name", "name"]);
-    const routeStartColumn = selectFirstAvailable(routesColumns, ["start_point"]);
-    const routeEndColumn = selectFirstAvailable(routesColumns, ["end_point"]);
-    const routeNoColumn = routesColumns.has("route_no") ? "route_no" : null;
-
-    if (!routeIdColumn || !routeNameColumn) {
-      return res.status(500).json({
-        success: false,
-        message: "Routes table schema not supported",
-      });
-    }
-
-    const [studentRows] = await db.execute(
-      `SELECT ${studentIdColumn} AS student_id, ${studentNameColumn} AS name, ${studentRouteColumn} AS route_id
-       FROM students
-       WHERE ${studentIdColumn} = ?
-       LIMIT 1`,
-      [studentId]
-    );
-
-    if (studentRows.length === 0) {
-      return res.json({
-        success: true,
-        answer: "Student record was not found in the database.",
-      });
-    }
-
-    const student = studentRows[0];
-    const currentRouteValue = student.route_id;
-
-    if (currentRouteValue == null || currentRouteValue === "") {
-      return res.json({
-        success: true,
-        answer: "Your route is not assigned yet in the database.",
-      });
-    }
-
-    let currentRouteRecord = await fetchFirstRow([
-      {
-        sql: `SELECT ${routeIdColumn} AS id, ${routeNoColumn || routeIdColumn} AS route_no, ${routeNameColumn} AS route_name, ${
-          routeStartColumn || "NULL"
-        } AS start_point, ${routeEndColumn || "NULL"} AS end_point
-         FROM routes
-         WHERE ${routeIdColumn} = ?
-         LIMIT 1`,
-        params: [currentRouteValue],
-      },
-      ...(routeNoColumn && routeNoColumn !== routeIdColumn
-        ? [{
-            sql: `SELECT ${routeIdColumn} AS id, ${routeNoColumn} AS route_no, ${routeNameColumn} AS route_name, ${
-              routeStartColumn || "NULL"
-            } AS start_point, ${routeEndColumn || "NULL"} AS end_point
-             FROM routes
-             WHERE ${routeNoColumn} = ?
-             LIMIT 1`,
-            params: [currentRouteValue],
-          }]
-        : []),
-      {
-        sql: `SELECT ${routeIdColumn} AS id, ${routeNoColumn || routeIdColumn} AS route_no, ${routeNameColumn} AS route_name, ${
-          routeStartColumn || "NULL"
-        } AS start_point, ${routeEndColumn || "NULL"} AS end_point
-         FROM routes
-         WHERE ${routeNameColumn} = ?
-         LIMIT 1`,
-        params: [String(currentRouteValue)],
-      },
-    ]);
-
-    const [allRoutes] = await db.execute(
-      `SELECT ${routeIdColumn} AS id, ${routeNameColumn} AS route_name, ${
-        routeStartColumn || "NULL"
-      } AS start_point, ${routeEndColumn || "NULL"} AS end_point, ${
-        routeNoColumn || routeIdColumn
-      } AS route_no
-       FROM routes
-       ORDER BY ${routeIdColumn}`
-    );
-
-    let resolvedRoute = currentRouteRecord;
-    if (!resolvedRoute) {
-      const normalizedStudentRoute = normalizeValue(currentRouteValue);
-      resolvedRoute = allRoutes.find((route) => {
-        return (
-          normalizeValue(route.id) === normalizedStudentRoute ||
-          normalizeValue(route.route_no) === normalizedStudentRoute ||
-          normalizeValue(route.route_name) === normalizedStudentRoute
-        );
-      }) || null;
-    }
-
-    if (!resolvedRoute) {
-      return res.json({
-        success: true,
-        answer: "Your route is stored in the student record, but I could not match it to a route in the database.",
-      });
-    }
-
-    const currentRouteData = resolvedRoute;
-
-    let alternativeRoutes = [];
-    if (routeStartColumn && currentRouteData.start_point) {
-      const [altRows] = await db.execute(
-        `SELECT ${routeIdColumn} AS id, ${routeNameColumn} AS route_name, ${routeStartColumn} AS start_point, ${
-          routeEndColumn || "NULL"
-        } AS end_point
-         FROM routes
-         WHERE ${routeStartColumn} = ? AND ${routeIdColumn} != ?
-         ORDER BY ${routeIdColumn}`,
-        [currentRouteData.start_point, currentRouteData.id]
-      );
-      alternativeRoutes = altRows;
-    }
-
-    let timings = [];
-    const notes = [];
-
-    const hasTimingsTable = await tableExists("timings");
-    if (hasTimingsTable) {
-      const timingsColumns = await getColumns("timings");
-      const timingRouteColumn = selectFirstAvailable(timingsColumns, ["route_id"]);
-      const timingStopColumn = selectFirstAvailable(timingsColumns, ["stop_name"]);
-      const timingArrivalColumn = selectFirstAvailable(timingsColumns, ["arrival_time"]);
-
-      if (timingRouteColumn && timingStopColumn && timingArrivalColumn) {
-        const [timingRows] = await db.execute(
-          `SELECT ${timingRouteColumn} AS route_id, ${timingStopColumn} AS stop_name, ${timingArrivalColumn} AS arrival_time
-           FROM timings
-             WHERE ${timingRouteColumn} IN (?, ?)
-           ORDER BY ${timingArrivalColumn}`,
-            [currentRouteData.id, currentRouteData.route_no]
-        );
-        timings = timingRows;
-      } else {
-        notes.push("timings table exists but required columns are missing");
-      }
-    } else {
-      notes.push("timings table not found");
-    }
-
-    const finalAnswer = await generateOpenAIAnswer({
-      systemPrompt: SYSTEM_PROMPT,
-      prompt: buildUserPrompt({
+    const answer = await generateOpenAIAnswer({
+      systemPrompt: GENERAL_SYSTEM_PROMPT,
+      prompt: buildGeneralPrompt({
         question,
         conversationHistory: history,
-        studentData: student,
-        currentRoute: currentRouteData,
-        timings,
-        alternativeRoutes,
-        notes,
-        allRoutes,
+        mode: "student",
       }),
-      fallback: buildStudentFallbackAnswer({
-        student,
-        currentRoute: currentRouteData,
-        timings,
-        alternativeRoutes,
-      }),
+      fallback: "I can help with that. Please ask your question again with a bit more detail.",
     });
 
-    writeCache(cacheId, finalAnswer);
-
-    return res.json({
-      success: true,
-      answer: finalAnswer.answer,
-      meta: finalAnswer.meta,
-    });
+    return res.json({ success: true, answer: answer.answer, meta: answer.meta });
   } catch (error) {
     console.error("assistant error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Something went wrong",
-    });
+    return res.status(500).json({ success: false, message: "Something went wrong" });
   }
 };
 
@@ -613,107 +395,218 @@ exports.askPublicAssistant = async (req, res) => {
   try {
     const question = String(req.body.question || "").trim();
     const history = normalizeHistory(req.body.history);
-    const transportQuery = isTransportQuestion(question);
+
+    if (!question) {
+      return res.status(400).json({ success: false, message: "question is required" });
+    }
 
     if (isCasualMessage(question)) {
       return res.json({
         success: true,
-        answer: buildCasualReply("public"),
-        meta: {
-          source: "rule",
-        },
+        answer: "Hi. I can help with bus pass booking steps, route info, and renewal guidance.",
+        meta: { source: "rule" },
       });
     }
 
-    if (!transportQuery) {
-      const generalAnswer = await generateOpenAIAnswer({
-        systemPrompt: GENERAL_SYSTEM_PROMPT,
-        prompt: buildGeneralPrompt({
-          question,
-          conversationHistory: history,
-          mode: "public",
-        }),
-        fallback: "I can help with that. Please ask your question again with a bit more detail.",
-      });
-
-      return res.json({
-        success: true,
-        answer: generalAnswer.answer,
-        meta: generalAnswer.meta,
-      });
-    }
-
-    if (!question) {
-      return res.status(400).json({
-        success: false,
-        message: "question is required",
-      });
-    }
-
-    const cacheId = cacheKey("public", question, history);
-    const cached = readCache(cacheId);
-    if (cached) {
-      return res.json({
-        success: true,
-        answer: cached.answer,
-        cached: true,
-        meta: {
-          ...(cached.meta || {}),
-          cached: true,
-        },
-      });
-    }
-
-    const [routes] = await db.execute(
-      `SELECT route_no, route_name, via, student_type
-       FROM routes
-       ORDER BY route_no`
-    );
-
-    const bookingGuide = [
-      "Login with college ID and password.",
-      "Open the booking procedure page or student dashboard.",
-      "Select a route from the available routes list.",
-      "Choose an available seat.",
-      "Complete payment to activate the bus pass.",
-      "After payment, download the bus pass from the dashboard.",
-      "For renewal, choose Renewal in the student dashboard and follow the prompts.",
-    ];
-
-    const notes = [
-      "This assistant answers from booking procedure and route data only.",
-      "If a route or stop is not present in the database, say it is not available.",
-    ];
-
-    const finalAnswer = await generateOpenAIAnswer({
-      systemPrompt: PUBLIC_SYSTEM_PROMPT,
-      prompt: buildPublicPrompt({
+    const answer = await generateOpenAIAnswer({
+      systemPrompt: GENERAL_SYSTEM_PROMPT,
+      prompt: buildGeneralPrompt({
         question,
         conversationHistory: history,
-        routes,
-        bookingGuide,
-        notes,
+        mode: "public",
       }),
-      fallback: buildPublicFallbackAnswer({
-        question,
-        routes,
-        bookingGuide,
-      }),
+      fallback: "I can help with that. Please ask your question again with a bit more detail.",
     });
 
-    writeCache(cacheId, finalAnswer);
-
-    return res.json({
-      success: true,
-      answer: finalAnswer.answer,
-      meta: finalAnswer.meta,
-    });
+    return res.json({ success: true, answer: answer.answer, meta: answer.meta });
   } catch (error) {
     console.error("public assistant error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Something went wrong",
-    });
+    return res.status(500).json({ success: false, message: "Something went wrong" });
   }
 };
 
+exports.suggestRoute = async (req, res) => {
+  try {
+    console.log("[AI suggest-route] request body:", req.body);
+
+    const location = String(req.body.location || "").trim();
+    const preferredTime = String(req.body.preferred_time || "").trim();
+    const studentType = String(req.body.student_type || "").trim().toLowerCase();
+
+    if (!location || !preferredTime || !studentType) {
+      const payload = buildRouteSuggestionResponse({
+        recommendedRoute: null,
+        alternativeRoutes: [],
+        explanation: "Location, preferred time, and student type are required",
+      });
+
+      console.log("[AI suggest-route] final response:", payload);
+      return res.status(400).json(payload);
+    }
+
+    const studentTypeLike = `%${normalizeText(studentType).replace(/\s+/g, "")}%`;
+
+    const [typedRouteRows] = await db.execute(
+      `SELECT route_no, route_name, via, student_type
+       FROM routes
+       WHERE REPLACE(LOWER(COALESCE(student_type, '')), ' ', '') LIKE ?
+       ORDER BY route_no`,
+      [studentTypeLike]
+    );
+
+    console.log(
+      "[AI suggest-route] DB result count:",
+      Array.isArray(typedRouteRows) ? typedRouteRows.length : 0
+    );
+
+    let routeRows = Array.isArray(typedRouteRows) ? typedRouteRows : [];
+
+    if (routeRows.length === 0) {
+      const [allRoutes] = await db.execute(
+        `SELECT route_no, route_name, via, student_type
+         FROM routes
+         ORDER BY route_no`
+      );
+
+      routeRows = Array.isArray(allRoutes) ? allRoutes : [];
+      console.log(
+        "[AI suggest-route] student-type fallback empty; using all-routes fallback count:",
+        routeRows.length
+      );
+    }
+
+    if (routeRows.length === 0) {
+      const payload = buildRouteSuggestionResponse({
+        recommendedRoute: null,
+        alternativeRoutes: [],
+        explanation: "No routes available",
+      });
+
+      console.log("[AI suggest-route] final response:", payload);
+      return res.json(payload);
+    }
+
+    const routeIds = routeRows
+      .map((route) => Number(route.route_no))
+      .filter((routeId) => Number.isInteger(routeId));
+
+    let timingRows = [];
+    if (routeIds.length > 0) {
+      const placeholders = routeIds.map(() => "?").join(", ");
+      const [timings] = await db.execute(
+        `SELECT route_id, stop_name, arrival_time
+         FROM timings
+         WHERE route_id IN (${placeholders})
+         ORDER BY route_id, arrival_time`,
+        routeIds
+      );
+      timingRows = Array.isArray(timings) ? timings : [];
+    }
+
+    console.log("[AI suggest-route] timing rows count:", timingRows.length);
+
+    const preferredMinutes = parseTimeToMinutes(preferredTime);
+    const locationTokens = tokenizeText(location);
+
+    const scoredRoutes = routeRows.map((route) => {
+      const routeId = Number(route.route_no);
+      const routeTimings = timingRows.filter((timing) => Number(timing.route_id) === routeId);
+      const routeStops = parseViaStops(route.via);
+      const routeText = [route.route_name, route.via, ...routeStops, ...routeTimings.map((timing) => timing.stop_name)]
+        .filter(Boolean)
+        .join(" ");
+
+      const locationScore = scoreLocationMatch(location, routeText);
+      const timingScoreData = scoreTiming(preferredMinutes, routeTimings);
+      const typeBonus = normalizeValue(route.student_type) === normalizeValue(studentType) ? 10 : 0;
+      const timingPriority = timingScoreData.score * 5;
+      const stopBonus = locationTokens.some((token) => normalizeText(routeText).includes(token)) ? 15 : 0;
+
+      return {
+        id: routeId,
+        route_name: route.route_name,
+        via: route.via || "",
+        student_type: route.student_type || studentType,
+        score: timingPriority + stopBonus + locationScore + typeBonus,
+        matched_stop: timingScoreData.bestStop,
+        timing_diff: timingScoreData.bestDiff,
+        timings: routeTimings,
+      };
+    });
+
+    scoredRoutes.sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      return left.id - right.id;
+    });
+
+    console.log(
+      "[AI suggest-route] final ranking:",
+      scoredRoutes.slice(0, 3).map((route) => ({
+        id: route.id,
+        route_name: route.route_name,
+        matched_stop: route.matched_stop,
+        timing_diff: route.timing_diff,
+        score: route.score,
+      }))
+    );
+
+    let payload;
+
+    try {
+      const llmResponse = await generateOpenAIAnswer({
+        systemPrompt:
+          "You are a CBIT bus route suggestion assistant. Choose only from the provided routes. Return strict JSON only with keys recommended, alternatives, and explanation. recommended must be one of the provided routes, alternatives must contain exactly two routes from the provided routes, and explanation should be one short sentence.",
+        prompt: [
+          `User location: ${location}, preferred time: ${preferredTime}.`,
+          `From these routes: ${JSON.stringify(buildRoutePromptRoutes(scoredRoutes.slice(0, 8)), null, 2)},`,
+          "select best route and 2 alternatives based on nearest stop and timing.",
+          "Return JSON in this exact shape:",
+          '{"recommended":{"id":1,"route_name":"Route Name"},"alternatives":[{"id":2,"route_name":"Route Name"},{"id":3,"route_name":"Route Name"}],"explanation":"Short reason here"}',
+        ].join("\n"),
+        fallback: "",
+      });
+
+      const parsedResponse = safeParseJson(llmResponse.answer);
+      const resolvedSelection = resolveAiRouteSelection(parsedResponse, scoredRoutes);
+
+      const fallbackRecommended = scoredRoutes[0] || null;
+      const fallbackAlternatives = scoredRoutes.slice(1, 3);
+
+      const recommendedRoute = resolvedSelection.recommended || fallbackRecommended;
+      const alternativeRoutes = (resolvedSelection.alternatives.length > 0
+        ? resolvedSelection.alternatives
+        : fallbackAlternatives
+      )
+        .filter((route) => !recommendedRoute || Number(route.id) !== Number(recommendedRoute.id))
+        .slice(0, 2);
+
+      const explanation =
+        (parsedResponse && typeof parsedResponse.explanation === "string"
+          ? parsedResponse.explanation.trim()
+          : "") || "Best route based on nearest stop and suitable timing";
+
+      payload = buildRouteSuggestionResponse({
+        recommendedRoute,
+        alternativeRoutes,
+        explanation,
+      });
+    } catch (groqError) {
+      console.warn("[AI suggest-route] Groq fallback used:", groqError.message);
+      payload = buildRouteSuggestionResponse({
+        recommendedRoute: scoredRoutes[0] || null,
+        alternativeRoutes: scoredRoutes.slice(1, 3),
+        explanation: "Best route based on nearest stop and suitable timing",
+      });
+    }
+
+    console.log("[AI suggest-route] final response:", payload);
+    return res.json(payload);
+  } catch (error) {
+    console.error("[AI suggest-route] error:", error);
+    return res.status(500).json({
+      recommended: null,
+      alternatives: [],
+      explanation: "Server error while generating suggestion",
+    });
+  }
+};

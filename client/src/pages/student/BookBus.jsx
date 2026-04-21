@@ -15,8 +15,15 @@ export default function BookBus() {
   const [bookingLoading, setBookingLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState(true);
   const [toast, setToast] = useState(null);
+  const [showAiModal, setShowAiModal] = useState(false);
+  const [aiLocation, setAiLocation] = useState("");
+  const [aiPreferredTime, setAiPreferredTime] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [aiSuggestion, setAiSuggestion] = useState(null);
   const navigate = useNavigate();
   const { student, setStudent } = useAuth();
+  const studentType = Number(student?.year) === 1 ? "junior" : Number(student?.year) >= 2 ? "senior" : "";
 
   function formatRouteLabel(route) {
     const via = route?.via ? ` (${route.via})` : "";
@@ -148,10 +155,72 @@ export default function BookBus() {
     }
   }, [authHeaders]);
 
+  const openAiModal = () => {
+    setAiError("");
+    setShowAiModal(true);
+  };
+
+  const closeAiModal = () => {
+    if (aiLoading) return;
+    setShowAiModal(false);
+    setAiError("");
+  };
+
+  const handleAiRouteSuggestion = async (event) => {
+    event.preventDefault();
+
+    if (!aiLocation.trim() || !aiPreferredTime || !studentType) {
+      setAiError("Please enter your location and preferred time.");
+      return;
+    }
+
+    try {
+      setAiLoading(true);
+      setAiError("");
+
+      const res = await fetch("/api/ai/suggest-route", {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          location: aiLocation.trim(),
+          preferred_time: aiPreferredTime,
+          student_type: studentType,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || "Unable to get AI suggestion");
+      }
+
+      setAiSuggestion(data);
+      setShowAiModal(false);
+
+      const recommendedRoute = data?.recommended;
+      if (recommendedRoute?.id != null) {
+        const routeId = String(recommendedRoute.id);
+        setSelectedRoute(routeId);
+        setSelectedSeat(null);
+        await handleRouteChange(routeId);
+      }
+    } catch (error) {
+      console.error(error);
+      setAiError(error.message || "Unable to get AI suggestion");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const applySuggestedRoute = async (routeId) => {
+    setSelectedRoute(String(routeId));
+    setSelectedSeat(null);
+    await handleRouteChange(String(routeId));
+  };
+
   useEffect(() => {
-    const studentType = Number(student?.year) === 1 ? "junior" : Number(student?.year) >= 2 ? "senior" : "";
     fetchStudentStatus().then(() => fetchRoutes(studentType));
-  }, [fetchRoutes, fetchStudentStatus, student?.year]);
+  }, [fetchRoutes, fetchStudentStatus, studentType]);
 
   async function handleConfirmBooking() {
     if (hasExistingBooking) {
@@ -320,6 +389,56 @@ export default function BookBus() {
             </option>
           ))}
         </select>
+
+        <div className="mt-3 flex flex-col gap-2 rounded-lg border border-dashed border-blue-200 bg-blue-50/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-medium text-gray-800">Not sure which route to choose?</p>
+            <p className="text-xs text-gray-500">Get a route suggestion based on your location and preferred time.</p>
+          </div>
+          <button
+            type="button"
+            onClick={openAiModal}
+            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+          >
+            Get AI Suggestion
+          </button>
+        </div>
+
+        {aiSuggestion?.recommended && (
+          <div className="mt-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3 space-y-2">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm font-semibold text-green-800">
+                Recommended Route: {aiSuggestion.recommended.route_name}
+              </p>
+              <button
+                type="button"
+                onClick={() => applySuggestedRoute(aiSuggestion.recommended.id)}
+                className="text-sm font-medium text-green-700 underline underline-offset-2"
+              >
+                Use recommended route
+              </button>
+            </div>
+
+            {aiSuggestion.explanation && (
+              <p className="text-sm text-green-900/80">{aiSuggestion.explanation}</p>
+            )}
+
+            {Array.isArray(aiSuggestion.alternatives) && aiSuggestion.alternatives.length > 0 && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {aiSuggestion.alternatives.slice(0, 2).map((route) => (
+                  <button
+                    key={route.id}
+                    type="button"
+                    onClick={() => applySuggestedRoute(route.id)}
+                    className="rounded-full border border-green-300 bg-white px-3 py-1 text-xs font-semibold text-green-800 transition hover:bg-green-100"
+                  >
+                    {route.route_name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div>
@@ -385,6 +504,74 @@ export default function BookBus() {
           {bookingLoading ? "Booking..." : "Confirm Booking"}
         </button>
       </div>
+
+      {showAiModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-6">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">AI Route Suggestion</h3>
+                <p className="mt-1 text-sm text-gray-500">Tell us where you are and when you want to travel.</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeAiModal}
+                className="rounded-full px-2 py-1 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Close AI route suggestion modal"
+              >
+                ×
+              </button>
+            </div>
+
+            {aiError && (
+              <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+                {aiError}
+              </div>
+            )}
+
+            <form onSubmit={handleAiRouteSuggestion} className="space-y-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Location</label>
+                <input
+                  type="text"
+                  value={aiLocation}
+                  onChange={(e) => setAiLocation(e.target.value)}
+                  placeholder="Nagole"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Preferred time</label>
+                <input
+                  type="time"
+                  value={aiPreferredTime}
+                  onChange={(e) => setAiPreferredTime(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-3 pt-2">
+                <p className="text-xs text-gray-500">Student type is detected automatically as {studentType || "student"}.</p>
+                <button
+                  type="submit"
+                  disabled={aiLoading}
+                  className="inline-flex min-w-36 items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {aiLoading ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                      Getting suggestion...
+                    </span>
+                  ) : (
+                    "Get Suggestion"
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
