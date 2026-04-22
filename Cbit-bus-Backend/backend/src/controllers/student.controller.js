@@ -118,6 +118,29 @@ exports.getRoutes = async (req, res) => {
   }
 };
 
+exports.getTransportStatus = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const [rows] = await db.execute(
+      "SELECT payment_status FROM students WHERE user_id = ? LIMIT 1",
+      [userId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    const normalized = String(rows[0].payment_status || "").trim().toLowerCase();
+    return res.json({
+      payment_status: normalized === "active" ? "paid" : "not_paid",
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
 exports.selectRoute = async (req, res) => {
   try {
 

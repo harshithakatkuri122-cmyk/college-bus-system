@@ -19,12 +19,13 @@ export default function BookBus() {
   const [aiLocation, setAiLocation] = useState("");
   const [aiPreferredTime, setAiPreferredTime] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState("");
-  const [aiSuggestion, setAiSuggestion] = useState(null);
+  const [aiError, setAiError] = useState(null);
+  const [aiResult, setAiResult] = useState(null);
   const [stopSuggestions, setStopSuggestions] = useState([]);
   const [stopSearchLoading, setStopSearchLoading] = useState(false);
   const [showStopSuggestions, setShowStopSuggestions] = useState(false);
   const locationInputWrapRef = useRef(null);
+  const aiRequestIdRef = useRef(0);
   const navigate = useNavigate();
   const { student, setStudent } = useAuth();
   const studentType = Number(student?.year) === 1 ? "junior" : Number(student?.year) >= 2 ? "senior" : "";
@@ -161,22 +162,23 @@ export default function BookBus() {
     }
   }, [authHeaders]);
 
-  const handleRouteChange = useCallback(async (routeNo) => {
+  const handleRouteChange = useCallback((routeNo) => {
+    setSelectedRoute(routeNo ? String(routeNo) : null);
+  }, []);
+
+  const loadSeatsForRoute = useCallback(async (routeNo) => {
     if (!routeNo) {
-      setSelectedRoute(null);
-      setSelectedSeat(null);
+      setLoadingSeats(false);
       setSeats([]);
       setRestrictedSeats(new Set());
       return;
     }
 
-    setSelectedRoute(routeNo);
-    setSelectedSeat(null);
+    setLoadingSeats(true);
     setSeats([]);
     setRestrictedSeats(new Set());
 
     try {
-      setLoadingSeats(true);
       const res = await fetch(`/api/student/seats/${routeNo}`, { headers: authHeaders() });
       const data = await res.json();
 
@@ -210,8 +212,8 @@ export default function BookBus() {
   }, [authHeaders]);
 
   const openAiModal = () => {
-    setAiError("");
-    setAiSuggestion(null);
+    setAiError(null);
+    setAiResult(null);
     setStopSuggestions([]);
     setShowStopSuggestions(false);
     setShowAiModal(true);
@@ -220,17 +222,17 @@ export default function BookBus() {
   const closeAiModal = () => {
     if (aiLoading) return;
     setShowAiModal(false);
-    setAiError("");
+    setAiError(null);
     setShowStopSuggestions(false);
   };
 
   const handleAiRouteSuggestion = async (event) => {
     event.preventDefault();
 
-    // Reset request state at the beginning to prevent stale errors/results flicker.
-    setAiError("");
-    setAiSuggestion(null);
+    const requestId = ++aiRequestIdRef.current;
     setAiLoading(true);
+    setAiError(null);
+    setAiResult(null);
 
     if (!aiLocation.trim() || !aiPreferredTime || !studentType) {
       setAiError("Please enter your location and preferred time.");
@@ -255,36 +257,48 @@ export default function BookBus() {
         throw new Error(data.message || "Unable to get AI suggestion");
       }
 
+      if (requestId !== aiRequestIdRef.current) {
+        return;
+      }
+
       const recommendedRoute = data?.recommended;
       if (recommendedRoute?.id != null) {
-        setAiSuggestion(data);
+        setAiResult(data);
         setShowAiModal(false);
         setShowStopSuggestions(false);
 
         const routeId = String(recommendedRoute.id);
-        setSelectedRoute(routeId);
-        setSelectedSeat(null);
-        await handleRouteChange(routeId);
+        console.log("Selected Route:", routeId);
+        handleRouteChange(routeId);
       } else {
         setAiError("No routes found near your location");
       }
     } catch (error) {
+      if (requestId !== aiRequestIdRef.current) {
+        return;
+      }
       console.error(error);
       setAiError(error.message || "Unable to get AI suggestion");
     } finally {
-      setAiLoading(false);
+      if (requestId === aiRequestIdRef.current) {
+        setAiLoading(false);
+      }
     }
   };
 
   const applySuggestedRoute = async (routeId) => {
-    setSelectedRoute(String(routeId));
-    setSelectedSeat(null);
-    await handleRouteChange(String(routeId));
+    const nextRouteId = String(routeId);
+    console.log("Selected Route:", nextRouteId);
+    handleRouteChange(nextRouteId);
   };
 
   useEffect(() => {
     fetchStudentStatus().then(() => fetchRoutes(studentType));
   }, [fetchRoutes, fetchStudentStatus, studentType]);
+
+  useEffect(() => {
+    loadSeatsForRoute(selectedRoute);
+  }, [loadSeatsForRoute, selectedRoute]);
 
   async function handleConfirmBooking() {
     if (hasExistingBooking) {
@@ -302,20 +316,38 @@ export default function BookBus() {
       return;
     }
 
+    console.log("Selected Route:", selectedRoute);
+
     try {
       setBookingLoading(true);
 
-      const bookRes = await fetch("/api/student/book", {
-        method: "POST",
-        headers: authHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({
-          roll_no: rollNo,
-          route_no: Number(selectedRoute),
-          seat_no: Number(selectedSeat),
-        }),
-      });
+      const payload = {
+        roll_no: rollNo,
+        route_no: Number(selectedRoute),
+        seat_no: Number(selectedSeat),
+      };
 
-      const bookData = await bookRes.json();
+      async function submitBooking(endpoint) {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: authHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify(payload),
+        });
+
+        const data = await response.json();
+        return { response, data };
+      }
+
+      let { response: bookRes, data: bookData } = await submitBooking("/api/student/book-bus");
+
+      const looksLikeMissingEndpoint =
+        bookRes.status === 404 && String(bookData?.message || "").trim().toLowerCase() === "route not found";
+
+      if (looksLikeMissingEndpoint) {
+        const fallback = await submitBooking("/api/student/book");
+        bookRes = fallback.response;
+        bookData = fallback.data;
+      }
 
       if (!bookRes.ok) {
         if (bookRes.status === 400) {
@@ -334,7 +366,7 @@ export default function BookBus() {
           }
 
           setHasExistingBooking(bookData.message === "Student already booked");
-          await handleRouteChange(selectedRoute);
+          await loadSeatsForRoute(selectedRoute);
           return;
         }
         if (bookRes.status === 404) {
@@ -360,7 +392,12 @@ export default function BookBus() {
 
       setHasExistingBooking(true);
 
-      navigate("/student/junior/details", { replace: true });
+      const bookingId = bookData.booking_id;
+      if (bookingId) {
+        navigate(`/payment?booking_id=${bookingId}`, { replace: true });
+      } else {
+        navigate("/payment", { replace: true });
+      }
     } catch (error) {
       console.error(error);
       showToast(error.message || "Unable to complete booking");
@@ -468,28 +505,36 @@ export default function BookBus() {
           </button>
         </div>
 
-        {aiSuggestion?.recommended && (
+        {aiLoading ? (
+          <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+            <p className="text-sm font-semibold text-blue-800">Finding best route...</p>
+          </div>
+        ) : aiError ? (
+          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {aiError}
+          </div>
+        ) : aiResult?.recommended ? (
           <div className="mt-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3 space-y-2">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm font-semibold text-green-800">
-                Recommended Route: {aiSuggestion.recommended.route_name}
+                Recommended Route: {aiResult.recommended.route_name}
               </p>
               <button
                 type="button"
-                onClick={() => applySuggestedRoute(aiSuggestion.recommended.id)}
+                onClick={() => applySuggestedRoute(aiResult.recommended.id)}
                 className="text-sm font-medium text-green-700 underline underline-offset-2"
               >
                 Use recommended route
               </button>
             </div>
 
-            {aiSuggestion.explanation && (
-              <p className="text-sm text-green-900/80">{aiSuggestion.explanation}</p>
+            {aiResult.explanation && (
+              <p className="text-sm text-green-900/80">{aiResult.explanation}</p>
             )}
 
-            {Array.isArray(aiSuggestion.alternatives) && aiSuggestion.alternatives.length > 0 && (
+            {Array.isArray(aiResult.alternatives) && aiResult.alternatives.length > 0 && (
               <div className="flex flex-wrap gap-2 pt-1">
-                {aiSuggestion.alternatives.slice(0, 2).map((route) => (
+                {aiResult.alternatives.slice(0, 2).map((route) => (
                   <button
                     key={route.id}
                     type="button"
@@ -502,7 +547,7 @@ export default function BookBus() {
               </div>
             )}
           </div>
-        )}
+        ) : null}
       </div>
 
       <div>
@@ -587,11 +632,19 @@ export default function BookBus() {
               </button>
             </div>
 
-            {!aiLoading && aiError && (
+            {aiLoading ? (
+              <div className="mb-4 rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-700">
+                Finding best route...
+              </div>
+            ) : aiError ? (
               <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
                 {aiError}
               </div>
-            )}
+            ) : aiResult?.recommended ? (
+              <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+                Recommended route found. Use the suggested route on the booking page.
+              </div>
+            ) : null}
 
             <form onSubmit={handleAiRouteSuggestion} className="space-y-4">
               <div ref={locationInputWrapRef} className="relative">

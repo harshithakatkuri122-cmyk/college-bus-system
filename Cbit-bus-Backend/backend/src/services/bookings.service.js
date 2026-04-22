@@ -45,11 +45,13 @@ async function createBookingRecord(executor, payload) {
 
   await ensureBookingsTable(executor);
 
-  await executor.execute(
+  const [result] = await executor.execute(
     `INSERT INTO bookings (student_id, bus_id, route_no, seat_no, academic_year, status)
      VALUES (?, ?, ?, ?, ?, ?)`,
     [Number(studentId), Number(busId), routeNo, seatNo, academicYear, status]
   );
+
+  return result;
 }
 
 async function getLatestBooking(executor, studentId) {

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import RouteSelection from "./RouteSelection";
 import SeatSelection from "./SeatSelection";
 
@@ -8,6 +8,50 @@ export default function SeniorChangeBus({ student, setStudent }) {
   const [selectedSeat, setSelectedSeat] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [transportStatus, setTransportStatus] = useState(null);
+
+  useEffect(() => {
+    async function fetchTransportStatus() {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        setError("Please login again to continue.");
+        setStatusLoading(false);
+        return;
+      }
+
+      try {
+        setStatusLoading(true);
+        setError("");
+
+        const headers = {
+          Authorization: `Bearer ${token}`,
+        };
+
+        let response = await fetch("/api/student/status", { headers });
+        let data = await response.json();
+
+        if (!response.ok) {
+          response = await fetch("/api/student/my-status", { headers });
+          data = await response.json();
+
+          if (!response.ok) {
+            throw new Error(data.message || "Unable to check transport status");
+          }
+        }
+
+        const normalized = String(data.payment_status || "").trim().toLowerCase();
+        setTransportStatus(normalized === "active" || normalized === "paid" ? "paid" : "not_paid");
+      } catch (statusError) {
+        console.error(statusError);
+        setError(statusError.message || "Unable to check transport status");
+      } finally {
+        setStatusLoading(false);
+      }
+    }
+
+    fetchTransportStatus();
+  }, []);
 
   // Step 1: Route selected
   const handleRouteSelected = (route) => {
@@ -82,6 +126,32 @@ export default function SeniorChangeBus({ student, setStudent }) {
     setSelectedSeat(null);
     setError("");
   };
+
+  if (statusLoading) {
+    return (
+      <div className="bg-white rounded-2xl shadow-md p-8 border-t-4 border-emerald-500">
+        <p className="text-gray-600">Checking transport status...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-white rounded-2xl shadow-md p-8 border-t-4 border-emerald-500">
+        <p className="text-red-600 font-medium">{error}</p>
+      </div>
+    );
+  }
+
+  if (transportStatus !== "paid") {
+    return (
+      <div className="bg-white rounded-2xl shadow-md p-8 border-t-4 border-emerald-500">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
+          You have not booked transport yet. Please book a bus first to enable bus change.
+        </div>
+      </div>
+    );
+  }
 
   // Step: Select Route
   if (step === "selectRoute") {

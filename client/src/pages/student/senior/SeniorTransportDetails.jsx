@@ -135,6 +135,17 @@ export default function SeniorTransportDetails({ student, setStudent }) {
     );
   }
 
+  const paymentStatus = String(studentData.payment_status || "").trim().toLowerCase();
+  if (paymentStatus !== "active" && paymentStatus !== "paid") {
+    return (
+      <div className="bg-white rounded-xl shadow-md p-6">
+        <p className="text-amber-700 font-medium">
+          Transport details will be visible only after the payment is done.
+        </p>
+      </div>
+    );
+  }
+
   const {
     name,
     roll_no,

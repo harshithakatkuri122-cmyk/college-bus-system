@@ -19,6 +19,8 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 
 // student feature pages
 import BookBus from "./pages/student/BookBus";
+import PaymentPage from "./pages/student/PaymentPage";
+import BusPassPage from "./pages/student/BusPassPage";
 import JuniorHome from "./pages/student/JuniorHome";
 import JuniorPass from "./pages/student/JuniorPass";
 // senior renewal handled inside SeniorDashboard now
@@ -217,6 +219,8 @@ export default function App() {
           <Route path="/routes/:type" element={<PublicLayout><RoutesPage /></PublicLayout>} />
           <Route path="/login" element={<PublicLayout><LoginPage /></PublicLayout>} />
           <Route path="/procedure" element={<PublicLayout showAssistant><BookingProcedure /></PublicLayout>} />
+          <Route path="/payment" element={<PrivateRoute roles={["student"]}><PaymentPage /></PrivateRoute>} />
+          <Route path="/bus-pass" element={<PrivateRoute roles={["student"]}><BusPassPage /></PrivateRoute>} />
 
           {/* student junior routes */}
           <Route 

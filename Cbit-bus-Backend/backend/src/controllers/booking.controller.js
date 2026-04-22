@@ -33,6 +33,45 @@ async function generateBookingQrBase64({ roll_no, bus_no, seat_no, route_name })
   });
 }
 
+async function getBookingDetails(executor, bookingId, userId = null) {
+  const params = [bookingId];
+  let ownershipClause = "";
+
+  if (userId != null) {
+    ownershipClause = " AND s.user_id = ?";
+    params.push(userId);
+  }
+
+  const [rows] = await executor.execute(
+    `SELECT
+      b.id AS booking_id,
+      b.student_id,
+      b.bus_id,
+      b.route_no,
+      b.seat_no,
+      b.academic_year,
+      b.status AS booking_status,
+      b.created_at,
+      s.user_id,
+      s.name,
+      s.roll_no,
+      s.bus_no,
+      s.seat_no AS student_seat_no,
+      s.route AS student_route_no,
+      s.payment_status,
+      r.route_name,
+      r.via
+    FROM bookings b
+    INNER JOIN students s ON s.user_id = b.student_id
+    LEFT JOIN routes r ON r.route_no = b.route_no
+    WHERE b.id = ?${ownershipClause}
+    LIMIT 1`,
+    params
+  );
+
+  return rows[0] || null;
+}
+
 exports.bookSeat = async (req, res) => {
   let connection;
 
@@ -328,8 +367,10 @@ exports.bookSeatByRoute = async (req, res) => {
       [rollNo]
     );
 
+    let bookingInsert = null;
+
     if (studentMeta.length > 0) {
-      await createBookingRecord(connection, {
+      bookingInsert = await createBookingRecord(connection, {
         studentId: Number(studentMeta[0].user_id),
         busId,
         routeNo,
@@ -359,11 +400,13 @@ exports.bookSeatByRoute = async (req, res) => {
 
     return res.json({
       message: "Booking successful",
+      booking_id: bookingInsert?.insertId || null,
       roll_no: rollNo,
       route_no: routeNo,
       bus_no: busNo,
       seat_no: seatNo,
       payment_status: "Pending",
+      status: "pending",
       qr_code: qrCode,
     });
   } catch (error) {
@@ -887,5 +930,74 @@ exports.changeBus = async (req, res) => {
     return res.status(500).json({ message: "Internal Error" });
   } finally {
     if (connection) connection.release();
+  }
+};
+
+exports.bookBus = async (req, res) => {
+  return exports.bookSeatByRoute(req, res);
+};
+
+exports.payForBooking = async (req, res) => {
+  try {
+    const userId = Number(req.user.id);
+    const bookingId = Number(req.body.booking_id || req.body.bookingId);
+
+    if (!Number.isInteger(bookingId)) {
+      return res.status(400).json({ message: "booking_id must be a number" });
+    }
+
+    const booking = await getBookingDetails(db, bookingId, userId);
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found" });
+    }
+
+    await db.execute(
+      "UPDATE students SET payment_status = 'Active' WHERE user_id = ?",
+      [userId]
+    );
+
+    return res.json({
+      message: "Payment successful",
+      booking_id: booking.booking_id,
+      status: "paid",
+      payment_status: "paid",
+    });
+  } catch (error) {
+    console.error("PAYMENT ERROR:", error);
+    return res.status(500).json({ message: "Internal Error" });
+  }
+};
+
+exports.getBookingById = async (req, res) => {
+  try {
+    const userId = Number(req.user.id);
+    const bookingId = Number(req.params.booking_id);
+
+    if (!Number.isInteger(bookingId)) {
+      return res.status(400).json({ message: "booking_id must be a number" });
+    }
+
+    const booking = await getBookingDetails(db, bookingId, userId);
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found" });
+    }
+
+    return res.json({
+      booking_id: booking.booking_id,
+      student_name: booking.name,
+      roll_no: booking.roll_no,
+      route_no: booking.route_no,
+      route_name: booking.route_name,
+      via: booking.via,
+      bus_no: booking.bus_no,
+      seat_no: booking.seat_no,
+      payment_status: String(booking.payment_status || "").trim().toLowerCase() === "active" ? "paid" : "not_paid",
+      academic_year: booking.academic_year,
+      booking_status: booking.booking_status,
+      created_at: booking.created_at,
+    });
+  } catch (error) {
+    console.error("BOOKING LOOKUP ERROR:", error);
+    return res.status(500).json({ message: "Internal Error" });
   }
 };

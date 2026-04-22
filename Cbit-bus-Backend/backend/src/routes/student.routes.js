@@ -11,15 +11,19 @@ const {
   getSeatsByRouteNo,
   selectRoute,
   getMyStatus,
+  getTransportStatus,
   getMyQrCode,
   getStudentQrByUserId,
   payForBus,
 } = require("../controllers/student.controller");
 const {
   bookSeat,
+  bookBus,
   bookSeatByRoute,
+  payForBooking,
   renewBooking,
   changeBus,
+  getBookingById,
 } = require("../controllers/booking.controller");
 const { getNoticesByUser } = require("../controllers/notice.controller");
 
@@ -59,10 +63,24 @@ router.post(
 );
 
 router.post(
+  "/book-bus",
+  authMiddleware,
+  authorizeRoles("student"),
+  bookBus
+);
+
+router.post(
   "/book",
   authMiddleware,
   authorizeRoles("student"),
   bookSeatByRoute
+);
+
+router.post(
+  "/payment",
+  authMiddleware,
+  authorizeRoles("student"),
+  payForBooking
 );
 
 router.post(
@@ -94,10 +112,24 @@ router.get(
 );
 
 router.get(
+  "/status",
+  authMiddleware,
+  authorizeRoles("student"),
+  getTransportStatus
+);
+
+router.get(
   "/my-status",
   authMiddleware,
   authorizeRoles("student"),
   getMyStatus
+);
+
+router.get(
+  "/booking/:booking_id",
+  authMiddleware,
+  authorizeRoles("student"),
+  getBookingById
 );
 
 router.get(
