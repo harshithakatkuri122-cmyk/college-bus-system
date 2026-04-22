@@ -14,7 +14,16 @@ dist/
 client/dist/
 dist-ssr/
 
-# Local env
+# Local env (VERY IMPORTANT 🔐)
+.env
+.env.*
+*.env
+
+# Backend specific env
+Cbit-bus-Backend/backend/.env
+*/.env
+
+# Local configs
 *.local
 
 # Editors
@@ -26,3 +35,6 @@ dist-ssr/
 *.njsproj
 *.sln
 *.sw?
+
+# OS files
+Thumbs.db

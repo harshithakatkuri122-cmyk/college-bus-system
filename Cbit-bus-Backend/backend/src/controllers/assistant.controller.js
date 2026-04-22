@@ -1,14 +1,26 @@
 const OpenAI = require("openai");
 const db = require("../config/db");
 
-const SYSTEM_PROMPT =
-  "You are a helpful AI assistant for CBIT transport users. For transport-related questions, prioritize the provided database context. For general questions, answer like a normal helpful AI assistant.";
+const CBIT_SYSTEM_PROMPT = [
+  "You are an assistant for the CBIT Bus Management System.",
+  "You ONLY answer questions related to this system.",
+  "",
+  "System features:",
+  "- Students log in to dashboard",
+  "- Click 'Book Bus'",
+  "- Select route based on stops and timings",
+  "- Choose seat and confirm booking",
+  "- Can change bus and download bus pass",
+  "",
+  "Strict rules:",
+  "- DO NOT mention RedBus, Indigo, or any external platforms",
+  "- DO NOT give general travel advice",
+  "- Always answer based on this system only",
+  "- If question is unrelated, say exactly: I can only help with CBIT bus system queries.",
+].join("\n");
 
-const PUBLIC_SYSTEM_PROMPT =
-  "You are a helpful AI assistant for CBIT website visitors. For transport-related questions, use the provided booking guide and route data. For general questions, answer naturally and helpfully.";
-
-const GENERAL_SYSTEM_PROMPT =
-  "You are a helpful, clear, and conversational AI assistant. Answer naturally and directly.";
+const SCOPE_ONLY_RESPONSE = "I can only help with CBIT bus system queries.";
+const MAX_CHAT_ROUTE_CONTEXT = 8;
 
 const CACHE_TTL_MS = Number(process.env.ASSISTANT_CACHE_TTL_MS || 2 * 60 * 1000);
 const MAX_HISTORY_MESSAGES = 8;
@@ -231,13 +243,272 @@ function buildRouteSuggestionResponse({ recommendedRoute, alternativeRoutes, exp
   };
 }
 
+function normalizeSearchTerm(value) {
+  return normalizeText(value).replace(/\s+/g, "");
+}
+
+function parseBoardingTimeToMinutes(value) {
+  return parseTimeToMinutes(value);
+}
+
+function selectBestRouteCandidate(candidates, boardingMinutes) {
+  let best = null;
+
+  for (const candidate of candidates) {
+    const arrivalMinutes = parseTimeToMinutes(candidate.arrival_time);
+    if (!Number.isInteger(arrivalMinutes)) continue;
+
+    const timeDiff = Math.abs(arrivalMinutes - boardingMinutes);
+    const isAfter = arrivalMinutes >= boardingMinutes;
+
+    const score = {
+      ...candidate,
+      arrivalMinutes,
+      timeDiff,
+      isAfter,
+    };
+
+    if (!best) {
+      best = score;
+      continue;
+    }
+
+    if (best.isAfter !== score.isAfter) {
+      if (score.isAfter) best = score;
+      continue;
+    }
+
+    if (score.timeDiff < best.timeDiff) {
+      best = score;
+      continue;
+    }
+
+    if (score.timeDiff === best.timeDiff && Number(score.route_no) < Number(best.route_no)) {
+      best = score;
+    }
+  }
+
+  return best;
+}
+
+function isRouteIntentQuestion(question) {
+  const text = normalizeText(question);
+  if (!text) return false;
+
+  return /\b(route|routes|stop|stops|timing|timings|eta|which bus|bus for|via|uppal|ecil|nagole|amberpet|lb nagar|mehdipatnam|kukatpally|dilsukhnagar|secunderabad)\b/.test(
+    text
+  );
+}
+
 function isCasualMessage(question) {
   const normalized = String(question || "").trim().toLowerCase();
   if (!normalized) return false;
 
-  return /^(hi|hii|hello|hey|yo|how are you|how r u|what'?s up|sup|good morning|good afternoon|good evening)$/.test(
+  return /^(hi|hii|hello|hey|yo|how are you|how r u|what'?s up|sup|good morning|good afternoon|good evening|thanks|thank you)$/.test(
     normalized
   );
+}
+
+function isInCbitAssistantScope(question) {
+  const text = normalizeText(question);
+  if (!text) return false;
+
+  if (isCasualMessage(question)) {
+    return true;
+  }
+
+  if (/\b(redbus|indigo|makemytrip|uber|ola|flight|airline|train|railway|hotel|tourism|trip)\b/.test(text)) {
+    return false;
+  }
+
+  return /\b(cbit|bus|buses|route|routes|seat|seats|timing|timings|eta|stop|stops|booking|book|renew|renewal|pass|dashboard|login|transport|change bus|download bus pass|junior|juniors|senior|seniors)\b/.test(
+    text
+  );
+}
+
+function detectRouteCountType(question) {
+  const text = normalizeText(question);
+  if (!text) return null;
+
+  const asksCount = /\b(how many|count|number of|total)\b/.test(text);
+  const asksRoute = /\b(route|routes)\b/.test(text);
+  if (!asksCount || !asksRoute) return null;
+
+  if (/\b(junior|juniors|1st year|first year)\b/.test(text)) return "junior";
+  if (/\b(senior|seniors|2nd year|second year|3rd year|third year|4th year|fourth year)\b/.test(text)) return "senior";
+
+  return "all";
+}
+
+async function buildRouteCountReply(type) {
+  if (type === "junior" || type === "senior") {
+    const [rows] = await db.execute(
+      `SELECT COUNT(*) AS total
+       FROM routes
+       WHERE LOWER(COALESCE(student_type, '')) = ?`,
+      [type]
+    );
+
+    const total = Number(rows?.[0]?.total || 0);
+    return `There are ${total} ${type} routes available in the CBIT bus system.`;
+  }
+
+  const [rows] = await db.execute(
+    `SELECT COUNT(*) AS total
+     FROM routes`
+  );
+  const total = Number(rows?.[0]?.total || 0);
+  return `There are ${total} total routes available in the CBIT bus system.`;
+}
+
+async function searchStops(req, res) {
+  try {
+    const q = String(req.query.q || "").trim();
+    if (!q) {
+      return res.json([]);
+    }
+
+    const searchTerm = normalizeSearchTerm(q);
+    const [rows] = await db.execute(
+      `SELECT DISTINCT stop_name
+       FROM timings
+       WHERE LOWER(REPLACE(stop_name, ' ', '')) LIKE LOWER(CONCAT(?, '%'))
+       ORDER BY stop_name
+       LIMIT 10`,
+      [searchTerm]
+    );
+
+    return res.json(Array.isArray(rows) ? rows.map((row) => row.stop_name) : []);
+  } catch (error) {
+    console.error("stop search error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+async function fetchRoutesWithTimings() {
+  const [routeRows] = await db.execute(
+    `SELECT route_no, route_name, via, student_type
+     FROM routes
+     ORDER BY route_no`
+  );
+
+  const routes = Array.isArray(routeRows) ? routeRows : [];
+  if (routes.length === 0) return [];
+
+  const routeIds = routes
+    .map((route) => Number(route.route_no))
+    .filter((routeId) => Number.isInteger(routeId));
+
+  let timingRows = [];
+  if (routeIds.length > 0) {
+    const placeholders = routeIds.map(() => "?").join(", ");
+    const [timings] = await db.execute(
+      `SELECT route_id, stop_name, arrival_time
+       FROM timings
+       WHERE route_id IN (${placeholders})
+       ORDER BY route_id, arrival_time`,
+      routeIds
+    );
+    timingRows = Array.isArray(timings) ? timings : [];
+  }
+
+  return routes.map((route) => {
+    const routeId = Number(route.route_no);
+    const routeTimings = timingRows.filter((timing) => Number(timing.route_id) === routeId);
+    return {
+      id: routeId,
+      route_name: route.route_name,
+      via: route.via || "",
+      student_type: route.student_type || "",
+      timings: routeTimings,
+    };
+  });
+}
+
+function buildRouteContextLines(question, routes) {
+  const scored = routes
+    .map((route) => {
+      const routeText = [
+        route.route_name,
+        route.via,
+        ...route.timings.map((timing) => timing.stop_name),
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      return {
+        ...route,
+        score: scoreLocationMatch(question, routeText),
+      };
+    })
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      return left.id - right.id;
+    })
+    .slice(0, MAX_CHAT_ROUTE_CONTEXT);
+
+  return scored.map((route) => {
+    const firstTiming = Array.isArray(route.timings) && route.timings.length > 0 ? route.timings[0] : null;
+    const timingText = firstTiming ? `${firstTiming.stop_name} -> ${firstTiming.arrival_time}` : "Timing unavailable";
+    const viaText = route.via ? ` (${route.via})` : "";
+    return `- Route ${route.id}: ${route.route_name}${viaText} -> ${timingText}`;
+  });
+}
+
+function buildCbitAssistantPrompt({ question, conversationHistory, mode, routeContextLines }) {
+  const routeIntent = isRouteIntentQuestion(question);
+
+  return [
+    "Mode:",
+    mode,
+    "",
+    "Recent Conversation:",
+    JSON.stringify(conversationHistory || [], null, 2),
+    "",
+    "User Question:",
+    question,
+    "",
+    "Available Routes and Timings:",
+    routeContextLines.length > 0 ? routeContextLines.join("\n") : "- No route data available",
+    "",
+    "Response Rules:",
+    "- Keep answer concise and app-specific (2-5 lines).",
+    "- Use only CBIT Bus Management System context.",
+    "- For route-related questions, suggest from Available Routes and Timings only.",
+    "- If unrelated to CBIT bus system, reply exactly: I can only help with CBIT bus system queries.",
+    routeIntent
+      ? "- Route-related output format: Line 1 `Best route: ...`, Line 2 `Timing: ...`, Line 3 `Reason: ...`. Keep each line short."
+      : "- For non-route questions, answer in 1-3 short lines specific to this app.",
+  ].join("\n");
+}
+
+function applyAssistantOutputGuardrails({ answer, question }) {
+  let text = String(answer || "").trim();
+  if (!text) return "";
+
+  if (/\b(redbus|indigo|makemytrip|uber|ola|airline|flight|hotel|tourism)\b/i.test(text)) {
+    return SCOPE_ONLY_RESPONSE;
+  }
+
+  const routeIntent = isRouteIntentQuestion(question);
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (routeIntent) {
+    const kept = lines.slice(0, 3);
+    text = kept.join("\n");
+  } else {
+    const kept = lines.slice(0, 4);
+    text = kept.join("\n");
+  }
+
+  if (text.length > 500) {
+    text = text.slice(0, 500).trim();
+  }
+
+  return text || "I can only help with CBIT bus system queries.";
 }
 
 function isTransportQuestion(question) {
@@ -249,50 +520,117 @@ function isTransportQuestion(question) {
   );
 }
 
-function buildGeneralPrompt({ question, conversationHistory, mode }) {
-  return [
-    "Mode:",
-    mode,
-    "",
-    "Recent Conversation:",
-    JSON.stringify(conversationHistory || [], null, 2),
-    "",
-    "User Question:",
-    question,
-    "",
-    "Style Rules:",
-    "- Answer directly and naturally.",
-    "- Keep tone friendly and human.",
-    "- Use short bullets only when useful.",
-  ].join("\n");
+function pickVariant(variants, question, history = []) {
+  if (!Array.isArray(variants) || variants.length === 0) return "";
+
+  const seedText = `${String(question || "").toLowerCase()}|${history.length}`;
+  let hash = 0;
+  for (let i = 0; i < seedText.length; i += 1) {
+    hash = (hash * 31 + seedText.charCodeAt(i)) % 2147483647;
+  }
+
+  return variants[Math.abs(hash) % variants.length];
 }
 
-function buildPublicPrompt({ question, conversationHistory, routes, bookingGuide, notes }) {
-  return [
-    "Question:",
+function buildCasualReply({ question, mode, history }) {
+  const q = String(question || "").trim().toLowerCase();
+  const isHowAreYou = /^(how are you|how r u|what'?s up|sup)$/.test(q);
+
+  if (mode === "public") {
+    if (isHowAreYou) {
+      return pickVariant(
+        [
+          "Doing well, thanks. I can help with bus pass booking, renewals, and route info.",
+          "All good here. Ask me about booking steps, route details, or pass renewal.",
+          "I am doing great. Want help with bus pass booking or checking route options?",
+        ],
+        question,
+        history
+      );
+    }
+
+    return pickVariant(
+      [
+        "Hi. I can help with bus pass booking steps, route info, and renewal guidance.",
+        "Hello. Ask me about booking a pass, renewing it, or checking available routes.",
+        "Hey. I can guide you through booking, payment steps, and route-related questions.",
+      ],
+      question,
+      history
+    );
+  }
+
+  if (isHowAreYou) {
+    return pickVariant(
+      [
+        "I am good, thanks. I can help with your route, ETA, seat details, or alternatives.",
+        "Doing well. Ask me about your bus timing, assigned route, or route alternatives.",
+        "I am fine. If you want, I can check route-related details and transport info for you.",
+      ],
+      question,
+      history
+    );
+  }
+
+  return pickVariant(
+    [
+      "Hi. I can help with route suggestions, booking, and timing questions.",
+      "Hello. I can help with route details, ETA, bus timings, and booking-related questions.",
+      "Hey. Ask me about your route, arrival timings, seat info, or booking flow.",
+    ],
     question,
-    "",
-    "Recent Conversation:",
-    JSON.stringify(conversationHistory || [], null, 2),
-    "",
-    "Booking Guide:",
-    JSON.stringify(bookingGuide, null, 2),
-    "",
-    "Routes:",
-    JSON.stringify(routes, null, 2),
-    "",
-    "Notes:",
-    JSON.stringify(notes, null, 2),
-    "",
-    "Rules:",
-    "- If the question is transport-related, prioritize the provided booking guide and routes.",
-    "- If the information is not in the data, say it is not available.",
-    "- Keep the response concise, practical, and conversational.",
-    "- If the question is a follow-up, use Recent Conversation for context.",
-    "- Avoid repetitive phrasing across turns.",
-    "- Use labeled sections only when useful, such as Booking Steps, Routes, and Notes.",
-    "- For straightforward questions, prefer a direct 2-5 line reply.",
-  ].join("\n");
+    history
+  );
+}
+
+function buildFallbackReply({ question, mode, history }) {
+  const transport = isTransportQuestion(question);
+
+  if (mode === "public") {
+    if (transport) {
+      return pickVariant(
+        [
+          "I could not fetch a live AI answer right now, but I can still help. Try asking with route name, stop, or whether this is for booking or renewal.",
+          "I am in fallback mode at the moment. Please include your stop/route and whether you need booking or renewal steps.",
+          "Live AI is temporarily unavailable. Ask in one line with key details like route, stop, and booking/renewal so I can guide you better.",
+        ],
+        question,
+        history
+      );
+    }
+
+    return pickVariant(
+      [
+        "I am in fallback mode right now. Please rephrase your question in one line and I will still try to help.",
+        "I could not generate a live response right now. Ask again with a little more detail and I will guide you.",
+        "Temporary fallback mode is active. Share a bit more context and I will provide the best possible answer.",
+      ],
+      question,
+      history
+    );
+  }
+
+  if (transport) {
+    return pickVariant(
+      [
+        "I could not get a live AI response right now, but I can still help with transport queries. Include your route/stop and what you want to know (ETA, timing, seat, or alternatives).",
+        "I am currently in fallback mode. Share your route or pickup point and I can give a more useful transport answer.",
+        "Live response is temporarily unavailable. Ask with details like route number, stop name, and whether you need ETA or alternative routes.",
+      ],
+      question,
+      history
+    );
+  }
+
+  return pickVariant(
+    [
+      "I can help with that. Please ask again with a bit more detail.",
+      "I could not generate a full live answer right now. Rephrase your question with more context and I will try again.",
+      "Please share a little more detail, and I will provide the best answer I can in fallback mode.",
+    ],
+    question,
+    history
+  );
 }
 
 async function generateOpenAIAnswer({ systemPrompt, prompt, fallback }) {
@@ -346,12 +684,28 @@ async function generateOpenAIAnswer({ systemPrompt, prompt, fallback }) {
       },
     };
   } catch (error) {
-    console.warn("LLM fallback used:", error.message);
+    const errorCode = String(error?.code || "").toLowerCase();
+    const status = Number(error?.status || 0);
+    const isAuthError = status === 401 || errorCode === "invalid_api_key";
+    const isQuotaError = status === 429;
+
+    console.warn(
+      `LLM fallback used (${provider}): status=${status || "n/a"} code=${errorCode || "n/a"} message=${error.message}`
+    );
+
+    const fallbackAnswer = isAuthError
+      ? `Live AI is unavailable because ${provider.toUpperCase()} authentication failed. Please verify ${provider.toUpperCase()} API key configuration.`
+      : isQuotaError
+        ? `Live AI is temporarily unavailable due to provider rate limits. Please retry in a moment.`
+        : fallback || "I could not generate a response from available data.";
+
     return {
-      answer: fallback || "I could not generate a response from available data.",
+      answer: fallbackAnswer,
       meta: {
         source: "fallback",
         provider,
+        errorCode: errorCode || null,
+        status: status || null,
       },
     };
   }
@@ -366,25 +720,46 @@ exports.askAssistant = async (req, res) => {
       return res.status(400).json({ success: false, message: "question is required" });
     }
 
-    if (isCasualMessage(question)) {
+    const routeCountType = detectRouteCountType(question);
+    if (routeCountType) {
+      const reply = await buildRouteCountReply(routeCountType);
       return res.json({
         success: true,
-        answer: "Hi. I can help with route suggestions, booking, and timing questions.",
-        meta: { source: "rule" },
+        answer: reply,
+        meta: { source: "db-rule" },
       });
     }
 
+    if (!isInCbitAssistantScope(question)) {
+      return res.json({
+        success: true,
+        answer: SCOPE_ONLY_RESPONSE,
+        meta: { source: "scope-guard" },
+      });
+    }
+
+    let routeContextLines = [];
+    if (isRouteIntentQuestion(question)) {
+      const routes = await fetchRoutesWithTimings();
+      routeContextLines = buildRouteContextLines(question, routes);
+    }
+
     const answer = await generateOpenAIAnswer({
-      systemPrompt: GENERAL_SYSTEM_PROMPT,
-      prompt: buildGeneralPrompt({
+      systemPrompt: CBIT_SYSTEM_PROMPT,
+      prompt: buildCbitAssistantPrompt({
         question,
         conversationHistory: history,
         mode: "student",
+        routeContextLines,
       }),
-      fallback: "I can help with that. Please ask your question again with a bit more detail.",
+      fallback: buildFallbackReply({ question, mode: "student", history }),
     });
 
-    return res.json({ success: true, answer: answer.answer, meta: answer.meta });
+    return res.json({
+      success: true,
+      answer: applyAssistantOutputGuardrails({ answer: answer.answer, question }),
+      meta: answer.meta,
+    });
   } catch (error) {
     console.error("assistant error:", error);
     return res.status(500).json({ success: false, message: "Something went wrong" });
@@ -400,25 +775,46 @@ exports.askPublicAssistant = async (req, res) => {
       return res.status(400).json({ success: false, message: "question is required" });
     }
 
-    if (isCasualMessage(question)) {
+    const routeCountType = detectRouteCountType(question);
+    if (routeCountType) {
+      const reply = await buildRouteCountReply(routeCountType);
       return res.json({
         success: true,
-        answer: "Hi. I can help with bus pass booking steps, route info, and renewal guidance.",
-        meta: { source: "rule" },
+        answer: reply,
+        meta: { source: "db-rule" },
       });
     }
 
+    if (!isInCbitAssistantScope(question)) {
+      return res.json({
+        success: true,
+        answer: SCOPE_ONLY_RESPONSE,
+        meta: { source: "scope-guard" },
+      });
+    }
+
+    let routeContextLines = [];
+    if (isRouteIntentQuestion(question)) {
+      const routes = await fetchRoutesWithTimings();
+      routeContextLines = buildRouteContextLines(question, routes);
+    }
+
     const answer = await generateOpenAIAnswer({
-      systemPrompt: GENERAL_SYSTEM_PROMPT,
-      prompt: buildGeneralPrompt({
+      systemPrompt: CBIT_SYSTEM_PROMPT,
+      prompt: buildCbitAssistantPrompt({
         question,
         conversationHistory: history,
         mode: "public",
+        routeContextLines,
       }),
-      fallback: "I can help with that. Please ask your question again with a bit more detail.",
+      fallback: buildFallbackReply({ question, mode: "public", history }),
     });
 
-    return res.json({ success: true, answer: answer.answer, meta: answer.meta });
+    return res.json({
+      success: true,
+      answer: applyAssistantOutputGuardrails({ answer: answer.answer, question }),
+      meta: answer.meta,
+    });
   } catch (error) {
     console.error("public assistant error:", error);
     return res.status(500).json({ success: false, message: "Something went wrong" });
@@ -430,14 +826,18 @@ exports.suggestRoute = async (req, res) => {
     console.log("[AI suggest-route] request body:", req.body);
 
     const location = String(req.body.location || "").trim();
-    const preferredTime = String(req.body.preferred_time || "").trim();
+    const boardingTime = String(req.body.boarding_time || req.body.preferred_time || "").trim();
     const studentType = String(req.body.student_type || "").trim().toLowerCase();
 
-    if (!location || !preferredTime || !studentType) {
+    console.log("[AI suggest-route] Location:", location);
+    console.log("[AI suggest-route] Boarding Time:", boardingTime);
+    console.log("[AI suggest-route] Student Type:", studentType);
+
+    if (!location || !boardingTime || !studentType) {
       const payload = buildRouteSuggestionResponse({
         recommendedRoute: null,
         alternativeRoutes: [],
-        explanation: "Location, preferred time, and student type are required",
+        explanation: "Location, boarding time, and student type are required",
       });
 
       console.log("[AI suggest-route] final response:", payload);
@@ -445,159 +845,133 @@ exports.suggestRoute = async (req, res) => {
     }
 
     const studentTypeLike = `%${normalizeText(studentType).replace(/\s+/g, "")}%`;
+    const locationLike = location;
+    const boardingMinutes = parseBoardingTimeToMinutes(boardingTime);
 
-    const [typedRouteRows] = await db.execute(
-      `SELECT route_no, route_name, via, student_type
-       FROM routes
-       WHERE REPLACE(LOWER(COALESCE(student_type, '')), ' ', '') LIKE ?
-       ORDER BY route_no`,
-      [studentTypeLike]
-    );
+    if (!Number.isInteger(boardingMinutes)) {
+      const payload = buildRouteSuggestionResponse({
+        recommendedRoute: null,
+        alternativeRoutes: [],
+        explanation: "Invalid boarding time",
+      });
+
+      console.log("[AI suggest-route] final response:", payload);
+      return res.status(400).json(payload);
+    }
+
+     const locationFirstQuery = `SELECT r.route_no, r.route_name, r.via, r.student_type, t.stop_name, t.arrival_time, b.id AS bus_id
+       FROM routes r
+       INNER JOIN timings t ON r.route_no = t.route_id
+       LEFT JOIN buses b ON b.route_no = r.route_no
+       WHERE REPLACE(LOWER(COALESCE(r.student_type, '')), ' ', '') LIKE ?
+       AND (
+         LOWER(REPLACE(t.stop_name, ' ', '')) LIKE LOWER(REPLACE(CONCAT('%', ?, '%'), ' ', ''))
+         OR LOWER(REPLACE(r.route_name, ' ', '')) LIKE LOWER(REPLACE(CONCAT('%', ?, '%'), ' ', ''))
+       )
+       ORDER BY r.route_no, t.arrival_time`;
+
+    const sqlParams = [studentTypeLike, locationLike, locationLike];
+    console.log("[AI suggest-route] SQL:", locationFirstQuery);
+    console.log("[AI suggest-route] SQL Params:", sqlParams);
+
+    const [matchedRows] = await db.execute(locationFirstQuery, sqlParams);
 
     console.log(
       "[AI suggest-route] DB result count:",
-      Array.isArray(typedRouteRows) ? typedRouteRows.length : 0
+      Array.isArray(matchedRows) ? matchedRows.length : 0
     );
 
-    let routeRows = Array.isArray(typedRouteRows) ? typedRouteRows : [];
+    const routeMap = new Map();
+    for (const row of Array.isArray(matchedRows) ? matchedRows : []) {
+      const routeId = Number(row.route_no);
+      if (!Number.isInteger(routeId)) continue;
 
-    if (routeRows.length === 0) {
-      const [allRoutes] = await db.execute(
-        `SELECT route_no, route_name, via, student_type
-         FROM routes
-         ORDER BY route_no`
-      );
+      const current = routeMap.get(routeId) || {
+        id: routeId,
+        route_name: row.route_name,
+        via: row.via || "",
+        student_type: row.student_type || studentType,
+        has_bus: row.bus_id != null,
+        candidates: [],
+      };
 
-      routeRows = Array.isArray(allRoutes) ? allRoutes : [];
-      console.log(
-        "[AI suggest-route] student-type fallback empty; using all-routes fallback count:",
-        routeRows.length
-      );
+      current.candidates.push(row);
+      routeMap.set(routeId, current);
     }
+
+    const routeRows = Array.from(routeMap.values());
 
     if (routeRows.length === 0) {
       const payload = buildRouteSuggestionResponse({
         recommendedRoute: null,
         alternativeRoutes: [],
-        explanation: "No routes available",
+        explanation: "No routes found near your location",
       });
 
       console.log("[AI suggest-route] final response:", payload);
       return res.json(payload);
     }
 
-    const routeIds = routeRows
-      .map((route) => Number(route.route_no))
-      .filter((routeId) => Number.isInteger(routeId));
+    const scoredRoutes = routeRows
+      .map((route) => {
+        const bestCandidate = selectBestRouteCandidate(route.candidates, boardingMinutes);
+        if (!bestCandidate) return null;
 
-    let timingRows = [];
-    if (routeIds.length > 0) {
-      const placeholders = routeIds.map(() => "?").join(", ");
-      const [timings] = await db.execute(
-        `SELECT route_id, stop_name, arrival_time
-         FROM timings
-         WHERE route_id IN (${placeholders})
-         ORDER BY route_id, arrival_time`,
-        routeIds
-      );
-      timingRows = Array.isArray(timings) ? timings : [];
-    }
+        return {
+          id: route.id,
+          route_name: route.route_name,
+          via: route.via || "",
+          student_type: route.student_type || studentType,
+          has_bus: Boolean(route.has_bus),
+          score: bestCandidate.timeDiff + (bestCandidate.isAfter ? 0 : 1000),
+          matched_stop: bestCandidate.stop_name,
+          timing_diff: bestCandidate.timeDiff,
+          isAfter: bestCandidate.isAfter,
+          matched_arrival_time: bestCandidate.arrival_time,
+          timings: route.candidates,
+        };
+      })
+      .filter(Boolean)
+      .sort((left, right) => {
+        if (left.has_bus !== right.has_bus) {
+          return left.has_bus ? -1 : 1;
+        }
 
-    console.log("[AI suggest-route] timing rows count:", timingRows.length);
+        if (left.isAfter !== right.isAfter) {
+          return left.isAfter ? -1 : 1;
+        }
 
-    const preferredMinutes = parseTimeToMinutes(preferredTime);
-    const locationTokens = tokenizeText(location);
+        if (left.timing_diff !== right.timing_diff) {
+          return left.timing_diff - right.timing_diff;
+        }
 
-    const scoredRoutes = routeRows.map((route) => {
-      const routeId = Number(route.route_no);
-      const routeTimings = timingRows.filter((timing) => Number(timing.route_id) === routeId);
-      const routeStops = parseViaStops(route.via);
-      const routeText = [route.route_name, route.via, ...routeStops, ...routeTimings.map((timing) => timing.stop_name)]
-        .filter(Boolean)
-        .join(" ");
-
-      const locationScore = scoreLocationMatch(location, routeText);
-      const timingScoreData = scoreTiming(preferredMinutes, routeTimings);
-      const typeBonus = normalizeValue(route.student_type) === normalizeValue(studentType) ? 10 : 0;
-      const timingPriority = timingScoreData.score * 5;
-      const stopBonus = locationTokens.some((token) => normalizeText(routeText).includes(token)) ? 15 : 0;
-
-      return {
-        id: routeId,
-        route_name: route.route_name,
-        via: route.via || "",
-        student_type: route.student_type || studentType,
-        score: timingPriority + stopBonus + locationScore + typeBonus,
-        matched_stop: timingScoreData.bestStop,
-        timing_diff: timingScoreData.bestDiff,
-        timings: routeTimings,
-      };
-    });
-
-    scoredRoutes.sort((left, right) => {
-      if (right.score !== left.score) return right.score - left.score;
-      return left.id - right.id;
-    });
+        return left.id - right.id;
+      });
 
     console.log(
       "[AI suggest-route] final ranking:",
       scoredRoutes.slice(0, 3).map((route) => ({
         id: route.id,
         route_name: route.route_name,
+        has_bus: route.has_bus,
         matched_stop: route.matched_stop,
         timing_diff: route.timing_diff,
         score: route.score,
       }))
     );
 
-    let payload;
+    const recommendedRoute = scoredRoutes[0] || null;
+    const alternativeRoutes = scoredRoutes.slice(1, 3);
 
-    try {
-      const llmResponse = await generateOpenAIAnswer({
-        systemPrompt:
-          "You are a CBIT bus route suggestion assistant. Choose only from the provided routes. Return strict JSON only with keys recommended, alternatives, and explanation. recommended must be one of the provided routes, alternatives must contain exactly two routes from the provided routes, and explanation should be one short sentence.",
-        prompt: [
-          `User location: ${location}, preferred time: ${preferredTime}.`,
-          `From these routes: ${JSON.stringify(buildRoutePromptRoutes(scoredRoutes.slice(0, 8)), null, 2)},`,
-          "select best route and 2 alternatives based on nearest stop and timing.",
-          "Return JSON in this exact shape:",
-          '{"recommended":{"id":1,"route_name":"Route Name"},"alternatives":[{"id":2,"route_name":"Route Name"},{"id":3,"route_name":"Route Name"}],"explanation":"Short reason here"}',
-        ].join("\n"),
-        fallback: "",
-      });
+    const explanation = recommendedRoute
+      ? `Route ${recommendedRoute.route_name} is the best option because it reaches ${recommendedRoute.matched_stop || "the nearest stop"} closest to ${boardingTime}.`
+      : "No routes found near your location";
 
-      const parsedResponse = safeParseJson(llmResponse.answer);
-      const resolvedSelection = resolveAiRouteSelection(parsedResponse, scoredRoutes);
-
-      const fallbackRecommended = scoredRoutes[0] || null;
-      const fallbackAlternatives = scoredRoutes.slice(1, 3);
-
-      const recommendedRoute = resolvedSelection.recommended || fallbackRecommended;
-      const alternativeRoutes = (resolvedSelection.alternatives.length > 0
-        ? resolvedSelection.alternatives
-        : fallbackAlternatives
-      )
-        .filter((route) => !recommendedRoute || Number(route.id) !== Number(recommendedRoute.id))
-        .slice(0, 2);
-
-      const explanation =
-        (parsedResponse && typeof parsedResponse.explanation === "string"
-          ? parsedResponse.explanation.trim()
-          : "") || "Best route based on nearest stop and suitable timing";
-
-      payload = buildRouteSuggestionResponse({
-        recommendedRoute,
-        alternativeRoutes,
-        explanation,
-      });
-    } catch (groqError) {
-      console.warn("[AI suggest-route] Groq fallback used:", groqError.message);
-      payload = buildRouteSuggestionResponse({
-        recommendedRoute: scoredRoutes[0] || null,
-        alternativeRoutes: scoredRoutes.slice(1, 3),
-        explanation: "Best route based on nearest stop and suitable timing",
-      });
-    }
+    const payload = buildRouteSuggestionResponse({
+      recommendedRoute,
+      alternativeRoutes,
+      explanation,
+    });
 
     console.log("[AI suggest-route] final response:", payload);
     return res.json(payload);
@@ -610,3 +984,5 @@ exports.suggestRoute = async (req, res) => {
     });
   }
 };
+
+exports.searchStops = searchStops;

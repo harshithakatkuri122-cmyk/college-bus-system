@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 
@@ -21,6 +21,10 @@ export default function BookBus() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState("");
   const [aiSuggestion, setAiSuggestion] = useState(null);
+  const [stopSuggestions, setStopSuggestions] = useState([]);
+  const [stopSearchLoading, setStopSearchLoading] = useState(false);
+  const [showStopSuggestions, setShowStopSuggestions] = useState(false);
+  const locationInputWrapRef = useRef(null);
   const navigate = useNavigate();
   const { student, setStudent } = useAuth();
   const studentType = Number(student?.year) === 1 ? "junior" : Number(student?.year) >= 2 ? "senior" : "";
@@ -47,6 +51,56 @@ export default function BookBus() {
     const timer = setTimeout(() => setToast(null), 3000);
     return () => clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    function handleOutsideClick(event) {
+      if (locationInputWrapRef.current && !locationInputWrapRef.current.contains(event.target)) {
+        setShowStopSuggestions(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, []);
+
+  useEffect(() => {
+    if (!showAiModal) {
+      setStopSuggestions([]);
+      setShowStopSuggestions(false);
+      return;
+    }
+
+    const query = aiLocation.trim();
+    if (!query) {
+      setStopSuggestions([]);
+      setShowStopSuggestions(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        setStopSearchLoading(true);
+        const res = await fetch(`/api/stops/search?q=${encodeURIComponent(query)}`, {
+          signal: controller.signal,
+        });
+        const data = await res.json();
+        setStopSuggestions(Array.isArray(data) ? data : []);
+        setShowStopSuggestions(true);
+      } catch (error) {
+        if (error.name !== "AbortError") {
+          console.error(error);
+        }
+      } finally {
+        setStopSearchLoading(false);
+      }
+    }, 300);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [aiLocation, showAiModal]);
 
   const fetchStudentStatus = useCallback(async () => {
     if (!localStorage.getItem("token")) {
@@ -157,6 +211,9 @@ export default function BookBus() {
 
   const openAiModal = () => {
     setAiError("");
+    setAiSuggestion(null);
+    setStopSuggestions([]);
+    setShowStopSuggestions(false);
     setShowAiModal(true);
   };
 
@@ -164,26 +221,30 @@ export default function BookBus() {
     if (aiLoading) return;
     setShowAiModal(false);
     setAiError("");
+    setShowStopSuggestions(false);
   };
 
   const handleAiRouteSuggestion = async (event) => {
     event.preventDefault();
 
+    // Reset request state at the beginning to prevent stale errors/results flicker.
+    setAiError("");
+    setAiSuggestion(null);
+    setAiLoading(true);
+
     if (!aiLocation.trim() || !aiPreferredTime || !studentType) {
       setAiError("Please enter your location and preferred time.");
+      setAiLoading(false);
       return;
     }
 
     try {
-      setAiLoading(true);
-      setAiError("");
-
       const res = await fetch("/api/ai/suggest-route", {
         method: "POST",
         headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           location: aiLocation.trim(),
-          preferred_time: aiPreferredTime,
+          boarding_time: aiPreferredTime,
           student_type: studentType,
         }),
       });
@@ -194,15 +255,18 @@ export default function BookBus() {
         throw new Error(data.message || "Unable to get AI suggestion");
       }
 
-      setAiSuggestion(data);
-      setShowAiModal(false);
-
       const recommendedRoute = data?.recommended;
       if (recommendedRoute?.id != null) {
+        setAiSuggestion(data);
+        setShowAiModal(false);
+        setShowStopSuggestions(false);
+
         const routeId = String(recommendedRoute.id);
         setSelectedRoute(routeId);
         setSelectedSeat(null);
         await handleRouteChange(routeId);
+      } else {
+        setAiError("No routes found near your location");
       }
     } catch (error) {
       console.error(error);
@@ -523,32 +587,60 @@ export default function BookBus() {
               </button>
             </div>
 
-            {aiError && (
+            {!aiLoading && aiError && (
               <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
                 {aiError}
               </div>
             )}
 
             <form onSubmit={handleAiRouteSuggestion} className="space-y-4">
-              <div>
+              <div ref={locationInputWrapRef} className="relative">
                 <label className="mb-1 block text-sm font-medium text-gray-700">Location</label>
                 <input
                   type="text"
                   value={aiLocation}
-                  onChange={(e) => setAiLocation(e.target.value)}
+                  onChange={(e) => {
+                    setAiLocation(e.target.value);
+                    setShowStopSuggestions(true);
+                  }}
+                  onFocus={() => aiLocation.trim() && setShowStopSuggestions(true)}
                   placeholder="Nagole"
+                  autoComplete="off"
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
+
+                {showStopSuggestions && (stopSearchLoading || stopSuggestions.length > 0) && (
+                  <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                    {stopSearchLoading && (
+                      <div className="px-3 py-2 text-sm text-gray-500">Searching stops...</div>
+                    )}
+
+                    {!stopSearchLoading && stopSuggestions.map((stop) => (
+                      <button
+                        key={stop}
+                        type="button"
+                        onClick={() => {
+                          setAiLocation(stop);
+                          setShowStopSuggestions(false);
+                        }}
+                        className="block w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700"
+                      >
+                        {stop}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Preferred time</label>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Boarding Time</label>
                 <input
                   type="time"
                   value={aiPreferredTime}
                   onChange={(e) => setAiPreferredTime(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
+                <p className="mt-1 text-xs text-gray-500">Boarding time means when you reach the stop.</p>
               </div>
 
               <div className="flex items-center justify-between gap-3 pt-2">
@@ -568,6 +660,10 @@ export default function BookBus() {
                   )}
                 </button>
               </div>
+
+              {aiLoading && (
+                <p className="text-xs text-blue-600">Finding best route...</p>
+              )}
             </form>
           </div>
         </div>
