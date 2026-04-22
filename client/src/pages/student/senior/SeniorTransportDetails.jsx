@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 const STATUS_ENDPOINT = "/api/student/my-status";
 
@@ -7,6 +8,7 @@ function normalizeValue(value) {
 }
 
 export default function SeniorTransportDetails({ student, setStudent }) {
+  const navigate = useNavigate();
   const [studentData, setStudentData] = useState(student || null);
   const [resolvedRoute, setResolvedRoute] = useState({ route_name: "", via: "" });
   const [loading, setLoading] = useState(true);
@@ -131,6 +133,26 @@ export default function SeniorTransportDetails({ student, setStudent }) {
     return (
       <div className="bg-white rounded-xl shadow-md p-6">
         <p className="text-gray-600">No transport details found.</p>
+      </div>
+    );
+  }
+
+  const hasBookedBus = Boolean(studentData.bus_no) && Boolean(studentData.seat_no);
+  if (!hasBookedBus) {
+    const passPath = Number(student?.year) === 1 ? "/student/junior/pass" : "/student/senior/pass";
+
+    return (
+      <div className="bg-white rounded-xl shadow-md p-6 space-y-4">
+        <p className="text-amber-700 font-medium">
+          No bus is booked yet. Click below to book a bus.
+        </p>
+        <button
+          type="button"
+          onClick={() => navigate(passPath)}
+          className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700"
+        >
+          Click to Book a Bus
+        </button>
       </div>
     );
   }

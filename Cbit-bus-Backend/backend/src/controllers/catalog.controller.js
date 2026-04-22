@@ -26,6 +26,51 @@ exports.getAllRoutes = async (req, res) => {
   }
 };
 
+exports.getRoutesWithTimings = async (req, res) => {
+  try {
+    const [rows] = await db.execute(
+      `SELECT
+         r.route_no,
+         r.route_name,
+         r.student_type,
+         t.stop_name,
+         t.arrival_time,
+         t.id AS stop_order
+       FROM routes r
+       LEFT JOIN timings t ON r.route_no = t.route_id
+       ORDER BY r.route_no, t.arrival_time, t.id`
+    );
+
+    const grouped = new Map();
+
+    for (const row of rows) {
+      const routeNo = Number(row.route_no);
+      if (!grouped.has(routeNo)) {
+        grouped.set(routeNo, {
+          route_no: routeNo,
+          route_name: row.route_name,
+          student_type: row.student_type,
+          timings: [],
+        });
+      }
+
+      if (row.stop_name) {
+        const entry = grouped.get(routeNo);
+        entry.timings.push({
+          stop_name: row.stop_name,
+          arrival_time: row.arrival_time,
+          stop_order: entry.timings.length + 1,
+        });
+      }
+    }
+
+    return res.json(Array.from(grouped.values()));
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
 exports.getRoutesByType = async (req, res) => {
   try {
     const type = String(req.params.type || "").trim().toLowerCase();
@@ -56,6 +101,49 @@ exports.getRoutesByType = async (req, res) => {
     }
 
     return res.json(rows);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+exports.getRouteTimingsById = async (req, res) => {
+  try {
+    const routeId = Number(req.params.id);
+
+    if (!Number.isInteger(routeId)) {
+      return res.status(400).json({ message: "Invalid route id" });
+    }
+
+    const [routeRows] = await db.execute(
+      `SELECT route_no, route_name, student_type
+       FROM routes
+       WHERE route_no = ?
+       LIMIT 1`,
+      [routeId]
+    );
+
+    if (routeRows.length === 0) {
+      return res.status(404).json({ message: "Route not found" });
+    }
+
+    const [timingsRows] = await db.execute(
+      `SELECT
+         id AS stop_order,
+         stop_name,
+         arrival_time
+       FROM timings
+       WHERE route_id = ?
+       ORDER BY id ASC`,
+      [routeId]
+    );
+
+    return res.json({
+      route_no: routeRows[0].route_no,
+      route_name: routeRows[0].route_name,
+      student_type: routeRows[0].student_type,
+      stops: timingsRows,
+    });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });

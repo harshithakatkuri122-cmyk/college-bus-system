@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import StudentDashboard from "./StudentDashboard";
 import SeniorSidebar from "./senior/SeniorSidebar";
@@ -13,6 +14,7 @@ import SeniorNotices from "./senior/SeniorNotices";
 export default function SeniorDashboard() {
   const [activeSection, setActiveSection] = useState("details");
   const { student, setStudent } = useAuth();
+  const location = useLocation();
 
   useEffect(() => {
     async function refreshStudentStatus() {
@@ -42,6 +44,18 @@ export default function SeniorDashboard() {
 
     refreshStudentStatus();
   }, [setStudent]);
+
+  useEffect(() => {
+    const path = location.pathname || "";
+    if (path.includes("/student/senior/pass")) setActiveSection("pass");
+    else if (path.includes("/student/senior/change")) setActiveSection("changeBus");
+    else if (path.includes("/student/senior/renew")) setActiveSection("renew");
+    else if (path.includes("/student/senior/timetable")) setActiveSection("notices");
+    else if (path.includes("/student/senior/complaint")) setActiveSection("complaint");
+    else if (path.includes("/student/senior/details") || path.endsWith("/student/senior")) {
+      setActiveSection("details");
+    }
+  }, [location]);
 
   const content = () => {
     if (!student) return <p>Loading transport data...</p>;

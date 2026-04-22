@@ -476,6 +476,16 @@ export default function BookBus() {
       )}
 
       <div>
+        <div className="mb-2">
+          <button
+            type="button"
+            onClick={() => navigate("/routes")}
+            className="inline-flex items-center gap-2 rounded-lg border border-green-200 bg-gradient-to-r from-green-600 to-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(16,185,129,0.35)] ring-1 ring-green-100 transition duration-200 hover:-translate-y-0.5 hover:from-green-700 hover:to-emerald-700 hover:shadow-[0_12px_24px_rgba(5,150,105,0.45)] focus:outline-none focus:ring-2 focus:ring-green-300"
+          >
+            <i className="fas fa-route" aria-hidden="true"></i>
+            View All Routes
+          </button>
+        </div>
         <label className="block text-gray-700 mb-1">Step 1: Select Route</label>
         <select
           value={selectedRoute ?? ""}
@@ -491,18 +501,33 @@ export default function BookBus() {
           ))}
         </select>
 
-        <div className="mt-3 flex flex-col gap-2 rounded-lg border border-dashed border-blue-200 bg-blue-50/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-medium text-gray-800">Not sure which route to choose?</p>
-            <p className="text-xs text-gray-500">Get a route suggestion based on your location and preferred time.</p>
+        <div className="mt-3 rounded-xl border border-indigo-200/90 bg-gradient-to-r from-indigo-50 via-blue-50 to-emerald-50 px-4 py-4 shadow-[0_8px_20px_rgba(0,0,0,0.08)] ring-1 ring-indigo-100 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_26px_rgba(79,70,229,0.18)]">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-indigo-600 shadow-sm ring-1 ring-indigo-100">
+                <i className="fas fa-robot"></i>
+              </span>
+              <div>
+                <div className="mb-1 flex items-center gap-2">
+                  <p className="text-sm font-semibold text-gray-900">✨ Not sure which route to choose?</p>
+                  <span className="rounded-full border border-indigo-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-indigo-700">
+                    AI Powered
+                  </span>
+                </div>
+                <p className="text-xs text-gray-600">
+                  Let AI suggest the best route based on your location and timing.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={openAiModal}
+              className="inline-flex items-center justify-center rounded-lg bg-gradient-to-r from-indigo-600 to-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md transition duration-200 hover:scale-105 hover:from-indigo-700 hover:to-blue-700 hover:shadow-lg"
+            >
+              Get AI Suggestion
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={openAiModal}
-            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
-          >
-            Get AI Suggestion
-          </button>
         </div>
 
         {aiLoading ? (
